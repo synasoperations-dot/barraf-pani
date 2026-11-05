@@ -1,0 +1,240 @@
+@import 'tailwindcss';
+
+/*
+ * Barraf Paani design tokens. Single source of truth (Tailwind v4 is CSS-first, so
+ * tokens live here in @theme rather than tailwind.config.ts). See docs/DESIGN.md.
+ * Default Tailwind colours, shadows and radii are cleared so only brand tokens exist.
+ */
+@theme {
+  --color-*: initial;
+  --color-blue: #1c9ad6;
+  --color-blue-deep: #0b6ba6;
+  --color-blue-light: #6ccfff;
+  --color-orange: #f26522;
+  --color-orange-deep: #d9551a;
+  --color-orange-blob: #e2581c;
+  --color-yellow: #ffd43b;
+  --color-ink: #14181f;
+  --color-paper: #f7fafc;
+  --color-grid-line: #dce8f0;
+  --color-muted: #4a5560;
+  --color-whatsapp: #25d366;
+  --color-white: #ffffff;
+
+  /* Hard offset shadows only. Never blurred. */
+  --shadow-*: initial;
+  --shadow-hard-sm: 3px 3px 0 var(--color-ink);
+  --shadow-hard: 4px 4px 0 var(--color-ink);
+  --shadow-hard-md: 6px 6px 0 var(--color-ink);
+  --shadow-hard-lg: 8px 8px 0 var(--color-ink);
+  --shadow-sticker: 0 6px 0 var(--color-ink);
+  --shadow-hard-orange: 4px 4px 0 var(--color-orange);
+  --shadow-none: 0 0 0 transparent;
+
+  --radius-*: initial;
+  --radius-chip: 10px;
+  --radius-sticker: 12px;
+  --radius-input: 14px;
+  --radius-button: 16px;
+  --radius-card: 22px;
+  --radius-panel: 28px;
+
+  --ease-overshoot: cubic-bezier(0.2, 1.4, 0.4, 1);
+
+  --animate-pop: pop 260ms var(--ease-overshoot) both;
+  --animate-stamp: stamp 380ms var(--ease-overshoot) both;
+  --animate-bump: bump 420ms var(--ease-overshoot);
+  --animate-chip-flash: chip-flash 320ms var(--ease-overshoot);
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-fade-in: fade-in 200ms ease-out both;
+
+  @keyframes pop {
+    from {
+      transform: scale(0.85);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+  @keyframes stamp {
+    from {
+      transform: scale(1.6) rotate(-12deg);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1) rotate(-12deg);
+      opacity: 1;
+    }
+  }
+  @keyframes bump {
+    0% {
+      transform: scale(1) rotate(0);
+    }
+    40% {
+      transform: scale(1.4) rotate(-10deg);
+    }
+    100% {
+      transform: scale(1) rotate(0);
+    }
+  }
+  @keyframes chip-flash {
+    0% {
+      transform: scale(1) rotate(0);
+    }
+    45% {
+      transform: scale(1.12) rotate(-4deg);
+      background-color: var(--color-yellow);
+      color: var(--color-ink);
+    }
+    100% {
+      transform: scale(1) rotate(0);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position:
+        -200% 0,
+        0 0,
+        0 0;
+    }
+    to {
+      background-position:
+        200% 0,
+        0 0,
+        0 0;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Font families resolve at use site (next/font sets the --font-* vars on <html>). */
+@theme inline {
+  /* Urdu fonts are only attached for `ur`; Latin fonts lack Arabic glyphs, so Urdu text falls through to them. */
+  --font-display: var(--font-lilita, system-ui), var(--font-lalezar, system-ui), sans-serif;
+  --font-sticker: var(--font-poppins, system-ui), var(--font-lalezar, system-ui), sans-serif;
+  --font-price: var(--font-bebas, system-ui), sans-serif;
+  --font-body: var(--font-dm-sans, system-ui), var(--font-nastaliq, system-ui), sans-serif;
+}
+
+/* ---------- Motifs as utilities (React wrappers live in components/ui/motifs.tsx) ---------- */
+
+@utility grid-paper {
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(var(--color-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@utility rings {
+  background-color: var(--color-blue);
+  background-image: repeating-radial-gradient(
+    circle at 50% 50%,
+    transparent 0 14px,
+    rgb(255 255 255 / 0.13) 14px 22px
+  );
+}
+
+@utility halftone {
+  background-image: radial-gradient(var(--color-ink) 1.6px, transparent 1.8px);
+  background-size: 7px 7px;
+  opacity: 0.6;
+}
+
+/* Big headline: 3px ink stroke + hard 5px shadow. */
+@utility headline {
+  -webkit-text-stroke: 3px var(--color-ink);
+  paint-order: stroke fill;
+  text-shadow: 5px 5px 0 var(--color-ink);
+}
+@utility headline-sm {
+  -webkit-text-stroke: 2px var(--color-ink);
+  paint-order: stroke fill;
+  text-shadow: 3px 3px 0 var(--color-ink);
+}
+
+/* Sticker press: moves by its shadow offset, shadow collapses to 0. */
+@utility press {
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+  &:active:not(:disabled) {
+    transform: translate(var(--press-x, 4px), var(--press-y, 4px));
+    box-shadow: var(--shadow-none);
+    transition-duration: 60ms;
+  }
+  &:not(:active) {
+    transition-timing-function: var(--ease-overshoot);
+  }
+}
+
+/* ---------- Base ---------- */
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    line-height: 1.55;
+  }
+  /* Nastaliq needs generous line height. */
+  :lang(ur) body {
+    line-height: 1.9;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-blue-deep);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--color-yellow);
+    color: var(--color-ink);
+  }
+}
+
+/* ---------- Page transitions ---------- */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+/* Shared element morph (item photo menu -> detail); see lib/motion.ts itemPhotoTransitionName. */
+::view-transition-group(.morph) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+/* Browsers without View Transitions get a 200ms fade. */
+@supports not (view-transition-name: none) {
+  .page-fade {
+    animation: var(--animate-fade-in);
+  }
+}
+
+/* ---------- Reduced motion: everything collapses to (at most) a fade ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
