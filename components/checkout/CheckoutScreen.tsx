@@ -16,6 +16,7 @@ import { PhoneInput } from '@/components/ui/PhoneInput';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { StickerHeading } from '@/components/ui/StickerHeading';
+import { useAddressLabel } from '@/components/account/AddressBook';
 import { useOtpFlow } from '@/features/auth/useOtpFlow';
 import { useAddToCart } from '@/features/cart/useAddToCart';
 import { useDebounced, useQuote } from '@/features/cart/useQuote';
@@ -124,6 +125,7 @@ export function CheckoutScreen({
   // The idempotency key is created here, once, when the checkout screen mounts (§2.4).
   const place = usePlaceOrder();
   const otp = useOtpFlow();
+  const addressLabel = useAddressLabel();
   const addToCart = useAddToCart();
   const setCartOpen = useUi((s) => s.setCartOpen);
   const hydrated = useSyncExternalStore(
@@ -183,7 +185,12 @@ export function CheckoutScreen({
   const days = useMemo(
     () =>
       store?.allowPreorders
-        ? preorderSlots({ hours: store.openingHours, now, maxDays: store.preorderMaxDays })
+        ? preorderSlots({
+            hours: store.openingHours,
+            now,
+            maxDays: store.preorderMaxDays,
+            holidays: store.holidays.map((h) => h.date),
+          })
         : [],
     [store, now],
   );
@@ -647,7 +654,7 @@ export function CheckoutScreen({
                         options={[
                           ...addresses.map((a) => ({
                             value: a.id,
-                            label: a.label || a.line1,
+                            label: a.label ? addressLabel(a) : a.line1,
                             description: [a.line1, a.area, a.landmark].filter(Boolean).join(' · '),
                           })),
                           {

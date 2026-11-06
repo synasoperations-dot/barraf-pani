@@ -16,6 +16,8 @@ export const Deal = z.object({
   imagePath: z.string().nullable(), // image_path
   /** Display text only (e.g. "Rs 795"). NEVER used for charging. */
   priceLabel: z.string().max(40).nullable(), // price_label
+  /** ADDITION: optional promo code shown on the coupon ("Copy code" pre-fills the cart). */
+  promoCode: z.string().max(30).nullable(), // promo_code
   /** Added to the cart as normal lines at normal prices. */
   items: z.array(CartLine.omit({ note: true })).min(1), // deal_items (item_id, variant_id, modifier_ids, qty)
   validFrom: IsoDateTime.nullable(), // valid_from

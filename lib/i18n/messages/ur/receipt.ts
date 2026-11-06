@@ -1,67 +1,67 @@
 import type { Messages } from '../en';
 
-// TODO translate: machine-drafted. Keys must match en/receipt.ts exactly.
+// REVIEW: machine-drafted. Keys must match en/receipt.ts exactly.
 const receipt: Messages['receipt'] = {
-  metaTitle: 'آپ کا آرڈر', // TODO translate
+  metaTitle: 'آپ کا آرڈر', // REVIEW
   celebrate: {
-    title: 'آرڈر ہو گیا!', // TODO translate
-    sticker: 'آرڈر #{number} · Rs {total}', // TODO translate
-    track: 'میرا آرڈر ٹریک کریں', // TODO translate
-    dismiss: 'میری رسید دیکھیں', // TODO translate
+    title: 'آرڈر ہو گیا!', // REVIEW
+    sticker: 'آرڈر #⁦{number}⁩ · ⁦Rs {total}⁩', // REVIEW
+    track: 'میرا آرڈر ٹریک کریں', // REVIEW
+    dismiss: 'میری رسید دیکھیں', // REVIEW
   },
-  title: 'رسید', // TODO translate
-  orderNumber: 'آرڈر #{number}', // TODO translate
-  placedAt: '{time} کو آرڈر کیا', // TODO translate
-  items: 'آپ نے کیا منگوایا', // TODO translate
-  qty: '{qty}×', // TODO translate
-  lineNote: 'نوٹ: {note}', // TODO translate
-  subtotal: 'سب ٹوٹل', // TODO translate
-  deliveryFee: 'ڈیلیوری', // TODO translate
-  free: 'مفت', // TODO translate
-  discount: 'رعایت', // TODO translate
-  tax: 'ٹیکس', // TODO translate
-  tip: 'ٹپ', // TODO translate
-  total: 'کل', // TODO translate
-  payment: 'ادائیگی', // TODO translate
+  title: 'رسید', // REVIEW
+  orderNumber: 'آرڈر #⁦{number}⁩', // REVIEW
+  placedAt: '⁦{time}⁩ کو آرڈر کیا', // REVIEW
+  items: 'آپ نے کیا منگوایا', // REVIEW
+  qty: '{qty}×', // REVIEW
+  lineNote: 'نوٹ: {note}', // REVIEW
+  subtotal: 'سب ٹوٹل', // REVIEW
+  deliveryFee: 'ڈیلیوری', // REVIEW
+  free: 'مفت', // REVIEW
+  discount: 'رعایت', // REVIEW
+  tax: 'ٹیکس', // REVIEW
+  tip: 'ٹپ', // REVIEW
+  total: 'کل', // REVIEW
+  payment: 'ادائیگی', // REVIEW
   method: {
-    cod: 'کیش آن ڈیلیوری', // TODO translate
-    jazzcash: 'JazzCash', // TODO translate
-    easypaisa: 'Easypaisa', // TODO translate
+    cod: 'کیش آن ڈیلیوری', // REVIEW
+    jazzcash: 'JazzCash', // REVIEW
+    easypaisa: 'Easypaisa', // REVIEW
   },
   payStatus: {
-    codDue: 'پہنچنے پر ادائیگی', // TODO translate
-    unpaid: 'ابھی ادا نہیں ہوا', // TODO translate
-    pending: 'تصدیق ہو رہی ہے', // TODO translate
-    paid: 'ادا ہو گیا', // TODO translate
-    failed: 'ناکام', // TODO translate
-    refunded: 'رقم واپس', // TODO translate
-    partially_refunded: 'جزوی رقم واپس', // TODO translate
+    codDue: 'پہنچنے پر ادائیگی', // REVIEW
+    unpaid: 'ابھی ادا نہیں ہوا', // REVIEW
+    pending: 'تصدیق ہو رہی ہے', // REVIEW
+    paid: 'ادا ہو گیا', // REVIEW
+    failed: 'ناکام', // REVIEW
+    refunded: 'رقم واپس', // REVIEW
+    partially_refunded: 'جزوی رقم واپس', // REVIEW
   },
-  deliveryTo: 'یہاں ڈیلیوری', // TODO translate
-  landmark: '{landmark} کے قریب', // TODO translate
-  pickupFrom: 'یہاں سے وصول کریں', // TODO translate
-  directions: 'راستہ', // TODO translate
-  scheduled: 'طے شدہ وقت', // TODO translate
-  yourNote: 'آپ کا نوٹ', // TODO translate
-  track: 'آرڈر ٹریک کریں', // TODO translate
-  reorder: 'دوبارہ آرڈر', // TODO translate
-  share: 'واٹس ایپ پر شیئر کریں', // TODO translate
-  shareText: 'میرا برف پانی آرڈر لائیو ٹریک کریں: {url}', // TODO translate
+  deliveryTo: 'یہاں ڈیلیوری', // REVIEW
+  landmark: '{landmark} کے قریب', // REVIEW
+  pickupFrom: 'یہاں سے وصول کریں', // REVIEW
+  directions: 'راستہ', // REVIEW
+  scheduled: 'طے شدہ وقت', // REVIEW
+  yourNote: 'آپ کا نوٹ', // REVIEW
+  track: 'آرڈر ٹریک کریں', // REVIEW
+  reorder: 'دوبارہ آرڈر', // REVIEW
+  share: 'واٹس ایپ پر شیئر کریں', // REVIEW
+  shareText: 'میرا برف پانی آرڈر لائیو ٹریک کریں: {url}', // REVIEW
   reorderSkipped:
-    '{count, plural, one {# آئٹم} other {# آئٹمز}} ابھی دستیاب نہیں، اس لیے شامل نہیں کیے گئے۔', // TODO translate
-  reorderNone: 'اس آرڈر میں سے ابھی کچھ دستیاب نہیں۔ مینو دیکھیں؟', // TODO translate
-  pendingTitle: 'ادائیگی کا انتظار', // TODO translate
-  pendingBody: 'ادائیگی کی تصدیق ہوتے ہی آرڈر بننا شروع ہو جائے گا۔', // TODO translate
-  pendingCta: 'ادائیگی چیک کریں', // TODO translate
+    '{count, plural, one {# آئٹم} other {# آئٹمز}} ابھی دستیاب نہیں، اس لیے شامل نہیں کیے گئے۔', // REVIEW
+  reorderNone: 'اس آرڈر میں سے ابھی کچھ دستیاب نہیں۔ مینو دیکھیں؟', // REVIEW
+  pendingTitle: 'ادائیگی کا انتظار', // REVIEW
+  pendingBody: 'ادائیگی کی تصدیق ہوتے ہی آرڈر بننا شروع ہو جائے گا۔', // REVIEW
+  pendingCta: 'ادائیگی چیک کریں', // REVIEW
   terminal: {
-    cancelled: 'یہ آرڈر منسوخ ہو گیا۔', // TODO translate
-    rejected: 'کچن یہ آرڈر نہیں لے سکا۔ معذرت۔', // TODO translate
-    payment_failed: 'ادائیگی نہیں ہو سکی، اس لیے یہ آرڈر کچن تک نہیں پہنچا۔', // TODO translate
-    expired: 'جواب آنے سے پہلے ادائیگی کا وقت ختم ہو گیا، اس لیے یہ آرڈر بند ہو گیا۔', // TODO translate
+    cancelled: 'یہ آرڈر منسوخ ہو گیا۔', // REVIEW
+    rejected: 'کچن یہ آرڈر نہیں لے سکا۔ معذرت۔', // REVIEW
+    payment_failed: 'ادائیگی نہیں ہو سکی، اس لیے یہ آرڈر کچن تک نہیں پہنچا۔', // REVIEW
+    expired: 'جواب آنے سے پہلے ادائیگی کا وقت ختم ہو گیا، اس لیے یہ آرڈر بند ہو گیا۔', // REVIEW
   },
-  notFoundTitle: 'ہمیں یہ آرڈر نہیں ملا', // TODO translate
-  notFoundBody: 'شاید لنک ادھورا ہے۔ اپنے فون نمبر سے تلاش کریں۔', // TODO translate
-  findOrder: 'میرا آرڈر تلاش کریں', // TODO translate
+  notFoundTitle: 'ہمیں یہ آرڈر نہیں ملا', // REVIEW
+  notFoundBody: 'شاید لنک ادھورا ہے۔ اپنے فون نمبر سے تلاش کریں۔', // REVIEW
+  findOrder: 'میرا آرڈر تلاش کریں', // REVIEW
 };
 
 export default receipt;

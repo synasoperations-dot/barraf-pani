@@ -130,7 +130,7 @@ interface State {
   lastInjectedAt: number;
 }
 
-const STORAGE_KEY = 'bp-mock-db-v2';
+const STORAGE_KEY = 'bp-mock-db-v3';
 const clone = <T>(v: T): T => structuredClone(v);
 export const now = () => new Date().toISOString();
 
@@ -312,6 +312,8 @@ export function upsertCustomer(phone: string, name: string | null): CustomerRec 
     phoneVerifiedAt: null,
     preferredLang: 'en',
     whatsappOptIn: false,
+    whatsappOptInAt: null,
+    whatsappOptInSource: null,
     codAllowed: true,
     createdAt: now(),
     isBlocked: false,
@@ -322,6 +324,13 @@ export function upsertCustomer(phone: string, name: string | null): CustomerRec 
   };
   db.customers.push(c);
   return c;
+}
+
+/** whatsapp_opt_in + whatsapp_opt_in_at + whatsapp_opt_in_source, always together (§5.4, §7). */
+export function setOptIn(c: CustomerRec, on: boolean, source: C.OptInSource | null) {
+  c.whatsappOptIn = on;
+  c.whatsappOptInAt = on ? now() : null;
+  c.whatsappOptInSource = on ? source : null;
 }
 
 export function requireStaff(roles?: C.StaffRole[]) {
@@ -395,6 +404,9 @@ export function storeStatus(): C.StoreStatus {
     openingHours: db.hours,
     preorderMaxDays: db.settings.preorderMaxDays,
     preorderCodMaxHours: db.settings.preorderCodMaxHours,
+    holidays: db.holidays
+      .filter((h) => h.date >= localToday())
+      .sort((a, b) => a.date.localeCompare(b.date)),
     checkedAt: now(),
   };
 }
@@ -843,7 +855,8 @@ export function newOrder(
       db.redemptions.push({ promoId: p.id, customerId: customer.id, orderId: rec.order.id });
     }
   }
-  customer.whatsappOptIn ||= input.whatsappOptIn;
+  // Consent is recorded with time and source (§5.4); a manual order never opts in (§A1.3).
+  if (input.whatsappOptIn && !customer.whatsappOptIn) setOptIn(customer, true, 'checkout');
   db.orders.unshift(rec);
   db.stats.ordersCreated += 1;
   addOutbox('kitchen.new_order', `order:${rec.order.number}:kitchen`);
@@ -971,6 +984,10 @@ export function publicDealsEvents(): C.DealsEvents {
 export function createBooking(input: Omit<C.BookingRequest, 'turnstileToken'>): C.Booking {
   if (input.date < localToday())
     fail('VALIDATION_FAILED', 'Pick today or a later date.', { field: 'date' });
+  if (db.holidays.some((h) => h.date === input.date))
+    fail('VALIDATION_FAILED', 'We are closed that day.', { field: 'date' });
+  if (input.type !== 'event' && !withinHours(input.date, input.time))
+    fail('VALIDATION_FAILED', 'Pick a time while we are open.', { field: 'time' });
   if (input.type === 'event') {
     const event = publicDealsEvents().events.find((e) => e.id === input.eventId);
     if (!event?.bookable) return fail('NOT_FOUND', 'That event is not open for booking.');
@@ -990,6 +1007,22 @@ export function createBooking(input: Omit<C.BookingRequest, 'turnstileToken'>): 
   addOutbox('whatsapp.booking_received', `booking:${b.publicToken}:requested`);
   save();
   return toBooking(b);
+}
+
+/** Is local `date` + `time` inside an opening window (past-midnight windows belong to the day they open)? */
+function withinHours(date: string, time: string) {
+  const mins = (hhmm: string) => {
+    const [h = 0, m = 0] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const t = mins(time);
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return db.hours.some((h) => {
+    if (h.weekday !== weekday) return false;
+    const open = mins(h.opens);
+    const close = mins(h.closes) <= open ? mins(h.closes) + 1440 : mins(h.closes);
+    return (t >= open && t < close) || (t + 1440 >= open && t + 1440 < close);
+  });
 }
 
 export const findBooking = (token: string) =>
@@ -1033,4 +1066,136 @@ export async function idempotent(
     delete db.idem[key]; // failed → may be retried with the same key
     throw e;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* account_demo: a returning customer (history, reorder review, addresses) */
+/* ------------------------------------------------------------------ */
+
+// Each order clears the Rs 500 minimum.
+const DEMO_LINES: C.CartLine[][] = [
+  [
+    {
+      itemId: FILLET_FURY_ID,
+      variantId: `${FILLET_FURY_ID}__std`,
+      modifierIds: [],
+      qty: 2,
+      note: null,
+    },
+  ],
+  [
+    {
+      itemId: 'itm_crunch-kick',
+      variantId: 'itm_crunch-kick__std',
+      modifierIds: [],
+      qty: 2,
+      note: null,
+    },
+    {
+      itemId: 'itm_masala-fries',
+      variantId: 'itm_masala-fries__regular',
+      modifierIds: [],
+      qty: 1,
+      note: null,
+    },
+  ],
+  [
+    {
+      itemId: 'itm_hot-wings',
+      variantId: 'itm_hot-wings__std',
+      modifierIds: [],
+      qty: 2,
+      note: null,
+    },
+  ],
+];
+
+/**
+ * Seeds 12 past orders (2 pages) and 2 addresses the first time a customer logs in under
+ * `account_demo`. Order 1 has Fillet Fury (sold out in this scenario), order 2 was cheaper
+ * back then (price changed), order 3 has an item that left the menu (inactive).
+ */
+export function seedAccountDemo(c: CustomerRec) {
+  if (db.orders.some((o) => o.customerId === c.id)) return;
+  c.name ??= 'Demo Customer';
+  if (!c.addresses.length)
+    c.addresses.push(
+      {
+        id: 'adr_demo_home',
+        label: 'home',
+        line1: 'House 12, Street 4',
+        area: 'Paradise City',
+        landmark: 'Opposite the mosque',
+        location: { lat: 31.27, lng: 72.318 },
+        isDefault: true,
+      },
+      {
+        id: 'adr_demo_work',
+        label: 'work',
+        line1: 'Shop 3, Main Bazaar',
+        area: 'Jhang Sadar',
+        landmark: null,
+        location: { lat: 31.266, lng: 72.32 },
+        isDefault: false,
+      },
+    );
+  for (let i = 11; i >= 0; i--) {
+    const lines = DEMO_LINES[i % DEMO_LINES.length]!;
+    let priced: PricedCart;
+    try {
+      priced = priceCart(
+        {
+          lines,
+          fulfilment: 'pickup',
+          location: null,
+          promoCode: null,
+          scheduledFor: null,
+          tip: 0,
+        },
+        c,
+      );
+    } catch {
+      continue; // store closed etc.
+    }
+    const rec = newOrder(
+      {
+        lines,
+        fulfilment: 'pickup',
+        paymentMethod: 'cod',
+        scheduledFor: null,
+        customerNote: null,
+        whatsappOptIn: false,
+        source: 'website',
+      },
+      priced,
+      c,
+      null,
+    );
+    const at = new Date(Date.now() - (i + 1) * 3 * 86_400_000).toISOString();
+    rec.autoAdvance = false;
+    rec.rejectAt = null;
+    rec.order.status = 'picked_up';
+    rec.order.canCancel = false;
+    rec.order.createdAt = at;
+    rec.order.events = [
+      { status: 'picked_up', at, note: null, actorType: 'system', actorName: 'seed' },
+    ];
+    if (i === 1) {
+      // Paid Rs 50 less per unit back then.
+      const l = rec.order.lines[0]!;
+      const diff = 50 * l.qty;
+      l.unitPrice -= 50;
+      l.lineTotal -= diff;
+      rec.order.subtotal -= diff;
+      rec.order.total -= diff;
+    }
+    if (i === 2) {
+      const l = rec.order.lines[0]!;
+      l.itemId = 'itm_retired-classic';
+      l.variantId = 'itm_retired-classic__std';
+      l.name = { en: 'Retired Classic', ur: null };
+    }
+  }
+  setSoldOut(FILLET_FURY_ID, true);
+  save();
 }

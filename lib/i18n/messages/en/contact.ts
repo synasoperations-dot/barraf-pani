@@ -1,0 +1,51 @@
+/** Visit & contact copy. Voice: short, punchy, confident (docs/DESIGN.md). */
+const contact = {
+  metaTitle: 'Visit & contact',
+  metaDescription:
+    'Address, opening hours, phone and WhatsApp for Barraf Paani in Paradise City, Jhang. Get directions or send us a message.',
+  title: 'Visit & contact',
+  sub: 'Come hungry. Leave furious-ly full.',
+  address: 'Address',
+  hours: 'Opening hours',
+  today: 'Today',
+  closedDay: 'Closed',
+  nextDay: '(next day)',
+  range: '{opens} – {closes}',
+  holidays: 'Upcoming closures',
+  holidayLine: '{date}{note, select, none {} other { · {note}}}',
+  noHolidays: 'No closures coming up.',
+  hoursError: "Hours didn't load.",
+  phone: 'Phone',
+  call: 'Call us',
+  whatsapp: 'WhatsApp us',
+  whatsappText: 'Hi Barraf Paani! I have a question:',
+  directions: 'Get directions',
+  eventTitle: 'Planning an event?',
+  eventBody: 'Birthdays, office parties, catering.',
+  eventCta: 'Book it here',
+  form: {
+    title: 'Send us a message',
+    name: 'Your name',
+    topic: 'Topic',
+    topics: {
+      feedback: 'Feedback',
+      complaint: 'Complaint',
+      data_deletion: 'Data deletion request',
+      other: 'Other',
+    },
+    deletionHint:
+      'We delete your name and phone from our records. Past orders stay, anonymised. Staff confirm by phone first.',
+    message: 'Message',
+    messagePlaceholder: 'Tell us what happened, or what you loved.',
+    send: 'Send message',
+    nameError: 'Tell us your name.',
+    phoneError: 'Add a Pakistani mobile so we can reply.',
+    messageError: 'Write at least a few words.',
+    sentStamp: 'Sent!',
+    sentBody: "Thanks. We'll get back to you on <ltr>{phone}</ltr>.",
+    reference: 'Reference: <ltr>{reference}</ltr>',
+    another: 'Send another',
+  },
+};
+
+export default contact;

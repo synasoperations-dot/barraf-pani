@@ -125,3 +125,21 @@ Short, punchy, confident. Headlines: "Made fresh. Served furious.", "What's the 
 - Touch targets ≥ 44px. Skip link to `#main`.
 - Native controls underneath custom visuals (radios, checkboxes, `<dialog>`).
 - RTL: layout uses logical properties (`ms-`, `me-`, `start-`, `end-`, `text-start`), so `dir="rtl"` flips it.
+
+## Site pages and system states (prompt 3)
+
+| Piece                           | File                                         | Notes                                                                                                                 |
+| ------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `PageHeader`                    | `components/site/PageHeader.tsx`             | Rings header with the page title as a big tilted sticker, optional white display subline and actions                  |
+| `SiteShell`                     | `components/site/SiteShell.tsx`              | Header, offline + store banners, main, footer (business facts), cart UI, install prompt. Used by `(site)` and the 404 |
+| `SystemScreen`, `DroppedBucket` | `components/site/SystemScreens.tsx`          | 404 / error / maintenance frame; huge stroked Lilita "404"; knocked-over fries bucket                                 |
+| `FactsBlock`                    | `components/site/FactsBlock.tsx`             | "Barraf Paani at a glance" from `lib/business-facts.ts` (About in full, footer on desktop)                            |
+| Account screens                 | `components/account/*`                       | Login (OTP states), profile, receipt-card history + reorder review sheet, address cards with label sticker icons      |
+| Deals, booking, contact         | `components/deals/*`, `components/contact/*` | Coupon stickers (dashed cut line, notches), comic-poster events, booking sheet, booking status sticker, hours table   |
+| About, FAQ, legal               | `components/about/*`, `faq/*`, `legal/*`     | Masonry gallery + lightbox, click-to-load reel facades, sticker accordions, 68ch legal layout with sticky contents    |
+
+- **RTL tilt:** inline sticker rotations use `tilt(deg)` from `lib/tilt.ts` (`calc(deg * var(--dir))`, `--dir` is −1 under `[dir=rtl]`), so tilts mirror in Urdu.
+- **Language switch:** `[data-sticker]` labels (StickerHeading, Tag) flip like cards when the locale changes (`LocaleFlip`, WAAPI); instant under reduced motion.
+- **Urdu line height:** `:lang(ur)` lifts `leading-none/tight/6/snug` to 1.6 so Nastaliq and Lalezar never clip inside stickers, chips and buttons.
+- **LTR values in Urdu:** wrap standalone numbers, prices and phones in `dir="ltr"`; inside translated sentences the `ur` messages use `⁦…⁩` isolates.
+- **Mobile:** `viewport-fit=cover` + safe-area padding on the header, cart bar and footer; the cart bar hides while the keyboard is open; `body { overflow-x: clip }` guards against tilted stickers causing sideways scroll; haptics (`lib/haptics.ts`) on add-to-cart and order placed.

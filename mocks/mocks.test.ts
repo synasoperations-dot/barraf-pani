@@ -610,3 +610,74 @@ describe('admin', () => {
     );
   });
 });
+
+describe('accounts (prompt 3)', () => {
+  it('orders/mine is paginated, newest first (account_demo seeds 12)', async () => {
+    scenario('account_demo');
+    await verify();
+    const p1 = await api.myOrders();
+    assert.equal(p1.orders.length, 10);
+    assert.equal(p1.nextCursor, '10');
+    const p2 = await api.myOrders(p1.nextCursor);
+    assert.equal(p2.orders.length, 2);
+    assert.equal(p2.nextCursor, null);
+    const all = [...p1.orders, ...p2.orders].map((o) => o.createdAt);
+    assert.deepEqual(all, [...all].sort().reverse());
+    assert.ok((await api.menu()).items.find((i) => i.id === FILLET_FURY_ID)!.isSoldOut);
+  });
+
+  it('WhatsApp opt-in records time and source; opting out clears them', async () => {
+    await verify();
+    const off = await api.me();
+    assert.equal(off.whatsappOptIn, false); // default off (§2.4)
+    assert.equal(
+      await code(api.updateMe({ whatsappOptIn: true } as never)),
+      'VALIDATION_FAILED', // source is required when opting in
+    );
+    const on = await api.updateMe({ whatsappOptIn: true, whatsappOptInSource: 'account' });
+    assert.ok(on.whatsappOptInAt);
+    assert.equal(on.whatsappOptInSource, 'account');
+    const out = await api.updateMe({ whatsappOptIn: false });
+    assert.equal(out.whatsappOptInAt, null);
+  });
+
+  it('addresses: outside-zone pins still save; exactly one default', async () => {
+    await verify();
+    const base = { line1: 'House 1', area: 'A', landmark: null };
+    const a = await api.addAddress({ ...base, label: 'home', location: INNER });
+    const b = await api.addAddress({ ...base, label: 'other', location: FAR }); // pickup reference
+    assert.equal(a.isDefault, true);
+    assert.equal(b.isDefault, false);
+    assert.equal(await code(api.deliveryQuote({ location: FAR })), 'OUTSIDE_ZONE');
+    await api.updateAddress(b.id, { isDefault: true });
+    let list = await api.addresses();
+    assert.deepEqual(
+      list.filter((x) => x.isDefault).map((x) => x.id),
+      [b.id],
+    );
+    await api.deleteAddress(b.id); // deleting the default promotes another
+    list = await api.addresses();
+    assert.deepEqual(
+      list.map((x) => [x.id, x.isDefault]),
+      [[a.id, true]],
+    );
+  });
+
+  it('contact form needs Turnstile and is rate-limited per phone', async () => {
+    const msg = {
+      name: 'A',
+      phone: PHONE,
+      topic: 'data_deletion' as const,
+      message: 'Please delete my data.',
+    };
+    assert.match((await api.contact(msg)).reference, /^MSG-/);
+    await api.contact(msg);
+    await api.contact(msg);
+    assert.equal(await code(api.contact(msg)), 'RATE_LIMITED');
+  });
+
+  it('store status lists upcoming holidays', async () => {
+    const s = await api.storeStatus();
+    assert.ok(s.holidays.every((h) => h.date >= new Date().toISOString().slice(0, 10)));
+  });
+});

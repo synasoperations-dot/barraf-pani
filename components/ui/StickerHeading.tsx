@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
+import { tilt as tiltCss } from '@/lib/tilt';
 import { BoltPair, Halftone } from './motifs';
 
 type Size = 'sm' | 'md' | 'lg';
@@ -48,12 +49,13 @@ export function StickerHeading({
         {bolts && <BoltPair side="start" scale={s.bolt} />}
         <Tag
           id={id}
+          data-sticker
           className={clsx(
             'inline-block rounded-sticker border-3 border-ink bg-white font-sticker leading-tight font-black text-ink shadow-sticker',
             s.text,
             s.pad,
           )}
-          style={{ transform: `rotate(${tilt}deg)` }}
+          style={{ rotate: tiltCss(tilt) }}
         >
           {children}
         </Tag>

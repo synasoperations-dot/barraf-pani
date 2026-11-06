@@ -5,6 +5,13 @@
  */
 import type { Deal, Event } from '@/lib/contracts';
 
+const inDays = (d: number, hour: number) => {
+  const t = new Date();
+  t.setUTCDate(t.getUTCDate() + d);
+  t.setUTCHours(hour - 5, 0, 0, 0); // hour in Asia/Karachi (UTC+5)
+  return t.toISOString();
+};
+
 export const demoDeals: Deal[] = [
   {
     id: 'deal_demo_1',
@@ -13,6 +20,7 @@ export const demoDeals: Deal[] = [
     imagePath: '/images/menu/burger.jpg',
     // Crunch Kick 450 + Masala Fries (Regular) 250 + Ranch 95 = 795, the normal prices added up.
     priceLabel: 'Rs 795',
+    promoCode: 'MOCK10', // mock promo: "Copy code" pre-fills the cart promo field
     items: [
       { itemId: 'itm_crunch-kick', variantId: 'itm_crunch-kick__std', modifierIds: [], qty: 1 },
       {
@@ -24,7 +32,7 @@ export const demoDeals: Deal[] = [
       { itemId: 'itm_dip-ranch', variantId: 'itm_dip-ranch__std', modifierIds: [], qty: 1 },
     ],
     validFrom: null,
-    validUntil: null,
+    validUntil: inDays(4, 23),
     isActive: true,
     sortOrder: 0,
   },
@@ -35,6 +43,7 @@ export const demoDeals: Deal[] = [
     imagePath: '/images/menu/wings.jpg',
     // Hot Wings 395 + BBQ Wings 445 = 840.
     priceLabel: 'Rs 840',
+    promoCode: null,
     items: [
       { itemId: 'itm_hot-wings', variantId: 'itm_hot-wings__std', modifierIds: [], qty: 1 },
       { itemId: 'itm_bbq-wings', variantId: 'itm_bbq-wings__std', modifierIds: [], qty: 1 },
@@ -45,13 +54,6 @@ export const demoDeals: Deal[] = [
     sortOrder: 1,
   },
 ];
-
-const inDays = (d: number, hour: number) => {
-  const t = new Date();
-  t.setUTCDate(t.getUTCDate() + d);
-  t.setUTCHours(hour - 5, 0, 0, 0); // hour in Asia/Karachi (UTC+5)
-  return t.toISOString();
-};
 
 export const demoEvents = (): Event[] => [
   {

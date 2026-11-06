@@ -1,67 +1,67 @@
 import type { Messages } from '../en';
 
-// TODO translate: machine-drafted. Keys must match en/home.ts exactly.
+// REVIEW: machine-drafted. Keys must match en/home.ts exactly.
 const home: Messages['home'] = {
   intro: {
-    skip: 'انٹرو چھوڑیں', // TODO translate
+    skip: 'انٹرو چھوڑیں', // REVIEW
   },
   hero: {
-    line1: 'تازہ بنا۔', // TODO translate
-    line2: 'جوش سے پیش۔', // TODO translate
-    location: 'پیراڈائز سٹی · جھنگ', // TODO translate
-    start: 'آرڈر شروع کریں', // TODO translate
-    seeMenu: 'مینو دیکھیں', // TODO translate
-    preorderFor: '{time} کے لیے پری آرڈر', // TODO translate
-    preorder: 'آرڈر شیڈول کریں', // TODO translate
-    opensAt: '{time} پر کھلے گا', // TODO translate
-    closed: 'ابھی بند ہے', // TODO translate
-    photoAlt: 'فِلے فیوری برگر', // TODO translate
-    featured: '{name} · {price}', // TODO translate
+    line1: 'تازہ بنا۔', // REVIEW
+    line2: 'جوش سے پیش۔', // REVIEW
+    location: 'پیراڈائز سٹی · جھنگ', // REVIEW
+    start: 'آرڈر شروع کریں', // REVIEW
+    seeMenu: 'مینو دیکھیں', // REVIEW
+    preorderFor: '⁦{time}⁩ کے لیے پری آرڈر', // REVIEW
+    preorder: 'آرڈر شیڈول کریں', // REVIEW
+    opensAt: '⁦{time}⁩ پر کھلے گا', // REVIEW
+    closed: 'ابھی بند ہے', // REVIEW
+    photoAlt: 'فِلے فیوری برگر', // REVIEW
+    featured: '{name} · {price}', // REVIEW
   },
   ways: {
-    deliveryBody: 'جھنگ میں جہاں تک ہم پہنچتے ہیں، گرم گرم آپ کے دروازے پر۔', // TODO translate
-    pickupBody: 'پہلے آرڈر کریں اور انتظار سے بچیں۔', // TODO translate
-    dineIn: 'یہیں کھائیں', // TODO translate
-    dineInBody: 'پیراڈائز سٹی میں بیٹھیں اور مزے سے کھائیں۔', // TODO translate
+    deliveryBody: 'جھنگ میں جہاں تک ہم پہنچتے ہیں، گرم گرم آپ کے دروازے پر۔', // REVIEW
+    pickupBody: 'پہلے آرڈر کریں اور انتظار سے بچیں۔', // REVIEW
+    dineIn: 'یہیں کھائیں', // REVIEW
+    dineInBody: 'پیراڈائز سٹی میں بیٹھیں اور مزے سے کھائیں۔', // REVIEW
   },
   favourites: {
-    title: 'سب کے پسندیدہ', // TODO translate
-    add: 'شامل کریں +', // TODO translate
-    addLabel: '{name} کارٹ میں شامل کریں', // TODO translate
-    choose: '{name} شامل کریں: پہلے آپشن چنیں', // TODO translate
-    soldOutStamp: 'آج ختم', // TODO translate
-    seeMenu: 'پورا مینو دیکھیں', // TODO translate
+    title: 'سب کے پسندیدہ', // REVIEW
+    add: 'شامل کریں +', // REVIEW
+    addLabel: '{name} کارٹ میں شامل کریں', // REVIEW
+    choose: '{name} شامل کریں: پہلے آپشن چنیں', // REVIEW
+    soldOutStamp: 'آج ختم', // REVIEW
+    seeMenu: 'پورا مینو دیکھیں', // REVIEW
   },
   cravings: {
-    seeMenu: 'سب کچھ', // TODO translate
+    seeMenu: 'سب کچھ', // REVIEW
   },
   deals: {
-    title: 'ڈیلز اور ایونٹس', // TODO translate
-    seeAll: 'تمام ڈیلز اور ایونٹس دیکھیں', // TODO translate
-    deal: 'ڈیل', // TODO translate
-    event: 'ایونٹ', // TODO translate
+    title: 'ڈیلز اور ایونٹس', // REVIEW
+    seeAll: 'تمام ڈیلز اور ایونٹس دیکھیں', // REVIEW
+    deal: 'ڈیل', // REVIEW
+    event: 'ایونٹ', // REVIEW
   },
   spot: {
-    title: 'ہماری جگہ', // TODO translate
-    soon: 'تصویر جلد', // TODO translate
-    counter: 'کاؤنٹر', // TODO translate
-    fryer: 'فرائر سے تازہ', // TODO translate
-    seats: 'بیٹھنے کی جگہ', // TODO translate
-    night: 'رات دیر تک', // TODO translate
+    title: 'ہماری جگہ', // REVIEW
+    soon: 'تصویر جلد', // REVIEW
+    counter: 'کاؤنٹر', // REVIEW
+    fryer: 'فرائر سے تازہ', // REVIEW
+    seats: 'بیٹھنے کی جگہ', // REVIEW
+    night: 'رات دیر تک', // REVIEW
   },
   findUs: {
-    title: 'ہمیں ڈھونڈیں', // TODO translate
-    address: 'پتہ', // TODO translate
-    hours: 'اوقات', // TODO translate
-    days: '{from} تا {to}', // TODO translate
-    range: '{opens} – {closes}', // TODO translate
-    nextDay: '(اگلے دن)', // TODO translate
-    whatsapp: 'واٹس ایپ کریں', // TODO translate
-    directions: 'راستہ دیکھیں', // TODO translate
-    loadMap: 'نقشہ دکھائیں', // TODO translate
-    mapHint: 'نقشہ صرف ٹیپ کرنے پر لوڈ ہوتا ہے۔', // TODO translate
-    pin: 'برف پانی یہاں ہے', // TODO translate
-    openMaps: 'گوگل میپس میں کھولیں', // TODO translate
+    title: 'ہمیں ڈھونڈیں', // REVIEW
+    address: 'پتہ', // REVIEW
+    hours: 'اوقات', // REVIEW
+    days: '{from} تا {to}', // REVIEW
+    range: '{opens} – {closes}', // REVIEW
+    nextDay: '(اگلے دن)', // REVIEW
+    whatsapp: 'واٹس ایپ کریں', // REVIEW
+    directions: 'راستہ دیکھیں', // REVIEW
+    loadMap: 'نقشہ دکھائیں', // REVIEW
+    mapHint: 'نقشہ صرف ٹیپ کرنے پر لوڈ ہوتا ہے۔', // REVIEW
+    pin: 'برف پانی یہاں ہے', // REVIEW
+    openMaps: 'گوگل میپس میں کھولیں', // REVIEW
   },
 };
 

@@ -23,7 +23,7 @@ const csp = [
   "font-src 'self'",
   `connect-src 'self' ${POSTHOG}`, // TODO(backend): add the Supabase https + wss hosts
   "worker-src 'self'", // MSW service worker (dev)
-  `frame-src ${TURNSTILE}`,
+  `frame-src ${TURNSTILE} https://www.instagram.com https://www.tiktok.com`, // reels load only after a click
   `form-action 'self' ${PAYMENT_FORM_HOSTS.join(' ')}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -49,6 +49,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   images: { formats: ['image/avif', 'image/webp'] },
+  // Low-memory machines: BUILD_CPUS=2 pnpm build limits the static-generation workers.
+  ...(process.env.BUILD_CPUS ? { experimental: { cpus: Number(process.env.BUILD_CPUS) } } : {}),
   async headers() {
     return [
       { source: '/:path*', headers: securityHeaders },
@@ -57,6 +59,24 @@ const nextConfig: NextConfig = {
       // Receipt and payment pages carry the same token in the URL.
       { source: '/order/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
       { source: '/pay/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      // Booking status pages carry their token too; account pages are personal.
+      ...['/booking/:path*', '/account/:path*', '/account'].map((source) => ({
+        source,
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      })),
+      // Private pages are never indexed (also Disallow'd in robots.ts and noindex'd in metadata).
+      ...[
+        '/track/:path*',
+        '/order/:path*',
+        '/booking/:path*',
+        '/account/:path*',
+        '/account',
+        '/pay/:path*',
+        '/login',
+      ].map((source) => ({
+        source,
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      })),
     ];
   },
 };

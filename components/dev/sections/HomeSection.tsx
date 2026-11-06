@@ -128,6 +128,7 @@ const STATUS: StoreStatus = {
   })),
   preorderMaxDays: 7,
   preorderCodMaxHours: 2,
+  holidays: [],
   checkedAt: '2026-11-06T10:00:00+05:00',
 };
 const CLOSED: StoreStatus = {
@@ -146,6 +147,7 @@ const DEALS: DealsEvents = {
       description: null,
       imagePath: null,
       priceLabel: 'Rs 795',
+      promoCode: null,
       items: [
         { itemId: 'itm_fillet-fury', variantId: 'fillet-fury__std', modifierIds: [], qty: 1 },
       ],

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 import { api, isApiError } from '@/lib/api';
 import type { ReviewRequest } from '@/lib/contracts';
@@ -29,9 +29,21 @@ export function useReviewOrder(token: string) {
 
 export const MY_ORDERS_KEY = ['orders', 'mine'] as const;
 
-/** Guest "My orders" (needs the session from phone OTP; UNAUTHENTICATED until then). */
-export const useMyOrders = () =>
-  useQuery({ queryKey: MY_ORDERS_KEY, queryFn: () => api.myOrders(), staleTime: 15_000 });
+/**
+ * "My orders", newest first, 10 per page (needs the session from phone OTP; UNAUTHENTICATED
+ * until then). `orders` flattens the loaded pages; `fetchNextPage` loads more.
+ */
+export function useMyOrders({ enabled = true }: { enabled?: boolean } = {}) {
+  const q = useInfiniteQuery({
+    queryKey: MY_ORDERS_KEY,
+    queryFn: ({ pageParam }) => api.myOrders(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    staleTime: 15_000,
+    enabled,
+  });
+  return { ...q, orders: q.data?.pages.flatMap((p) => p.orders) };
+}
 
 const isNotFound = (e: unknown) => isApiError(e) && e.code === 'NOT_FOUND';
 

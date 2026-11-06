@@ -6,6 +6,7 @@ import { toast } from '@/components/ui/Toast';
 import { track } from '@/lib/analytics';
 import type { Item, Modifier, Variant } from '@/lib/contracts';
 import { localized } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 import { flyToCart } from '@/lib/motion';
 import { lineKey, useCart } from '@/stores/cart';
 import { useUi } from '@/stores/ui';
@@ -68,6 +69,7 @@ export function useAddToCart() {
         },
       });
       track('added_to_cart', { itemId: item.id, variantId: variant.id, qty, source });
+      haptic();
 
       const target = document.getElementById('cart-target');
       if (from && target)

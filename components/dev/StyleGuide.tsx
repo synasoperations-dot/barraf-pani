@@ -46,6 +46,9 @@ import { CheckoutSection } from './sections/CheckoutSection';
 import { PaymentSection } from './sections/PaymentSection';
 import { ReceiptSection } from './sections/ReceiptSection';
 import { TrackingSection } from './sections/TrackingSection';
+import { AccountSection } from './sections/AccountSection';
+import { ContentSection } from './sections/ContentSection';
+import { DealsSection } from './sections/DealsSection';
 
 /* ---------- Layout helpers ---------- */
 
@@ -161,6 +164,10 @@ export function StyleGuide() {
     'staff',
     'states',
     'motion',
+    'account',
+    'system',
+    'deals',
+    'content',
   ];
 
   return (
@@ -956,6 +963,11 @@ export function StyleGuide() {
           <PaymentSection />
           <ReceiptSection />
           <TrackingSection />
+
+          {/* Prompt 3: site pages, accounts, system states. */}
+          <AccountSection />
+          <DealsSection />
+          <ContentSection />
         </div>
       </GridPaper>
     </MotionConfig>

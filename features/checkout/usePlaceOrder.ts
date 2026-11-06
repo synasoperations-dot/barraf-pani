@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useReducer, useState } from 'react';
 import { api } from '@/lib/api';
 import { track } from '@/lib/analytics';
+import { haptic } from '@/lib/haptics';
 import type { PlaceOrderRequest, PlaceOrderResponse } from '@/lib/contracts';
 import { useRecentOrders } from '@/features/orders/recent';
 import { createCheckoutSession } from './session';
@@ -24,6 +25,7 @@ export function usePlaceOrder() {
     mutationFn: (body) => session.submit((key) => api.placeOrder(body, key)),
     onSuccess: ({ order }) => {
       useRecentOrders.getState().add(order.publicToken);
+      haptic([20, 40, 20]);
       track('order_placed', {
         orderNumber: order.number,
         total: order.total,

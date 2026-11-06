@@ -10,6 +10,7 @@ import { Tag } from '@/components/ui/states';
 import { useDealsEvents } from '@/features/menu/useMenu';
 import type { DealsEvents } from '@/lib/contracts';
 import { localized } from '@/lib/format';
+import { tilt } from '@/lib/tilt';
 
 const TILTS = [-3, 2, -1.5];
 
@@ -56,9 +57,9 @@ export function DealsTeaserView({ data }: { data: DealsEvents | undefined }) {
         </StickerHeading>
         <ul className="mt-10 grid gap-6 sm:grid-cols-3">
           {cards.map((c, i) => (
-            <li key={c.id} style={{ rotate: `${TILTS[i]}deg` }}>
+            <li key={c.id} style={{ rotate: tilt(TILTS[i] ?? 0) }}>
               <Link
-                href="/deals-events"
+                href="/deals"
                 className={clsx(
                   'flex h-full press flex-col gap-3 rounded-card border-3 border-ink p-2 text-ink shadow-hard-md [--press-x:6px] [--press-y:6px]',
                   c.kind === 'deal' ? 'bg-yellow' : 'bg-blue-light',
@@ -81,7 +82,7 @@ export function DealsTeaserView({ data }: { data: DealsEvents | undefined }) {
           ))}
         </ul>
         <p className="mt-10 text-center">
-          <Link href="/deals-events" className={buttonClasses({ variant: 'secondary' })}>
+          <Link href="/deals" className={buttonClasses({ variant: 'secondary' })}>
             {t('seeAll')}
           </Link>
         </p>

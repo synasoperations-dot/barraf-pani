@@ -5,6 +5,7 @@ import { Logo } from '@/components/ui/Logo';
 import { BoltPair } from '@/components/ui/motifs';
 import { StickerHeading } from '@/components/ui/StickerHeading';
 import { Tag } from '@/components/ui/states';
+import { tilt } from '@/lib/tilt';
 
 // TODO_CONFIRM: client photos of the shop. Until then these are designed placeholder tiles
 // (no <img>, so nothing can 404). Swap each tile's body for a next/image at aspect 4/5.
@@ -28,7 +29,7 @@ export function TheSpot() {
           {TILES.map((tile) => (
             <li
               key={tile.key}
-              style={{ rotate: `${tile.tilt}deg` }}
+              style={{ rotate: tilt(tile.tilt) }}
               className={clsx(
                 'relative flex aspect-[4/5] flex-col items-center justify-center gap-3 overflow-hidden rounded-card border-3 border-ink p-3 shadow-hard-md',
                 tile.bg,

@@ -10,15 +10,16 @@ import { buttonClasses } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { BoltPair } from '@/components/ui/motifs';
 import { CART_BUMP_EVENT } from '@/lib/motion';
+import { tilt } from '@/lib/tilt';
 import { selectCount, useCart } from '@/stores/cart';
 import { useUi } from '@/stores/ui';
 import { LanguageToggle } from './LanguageToggle';
 
 export const NAV = [
   { href: '/menu', key: 'menu' },
-  { href: '/deals-events', key: 'deals' },
+  { href: '/deals', key: 'deals' },
   { href: '/about', key: 'about' },
-  { href: '/visit', key: 'visit' },
+  { href: '/contact', key: 'visit' },
 ] as const;
 
 /** Cart icon button. `id="cart-target"` is where flyToCart aims. */
@@ -62,6 +63,29 @@ export function CartButton({ className }: { className?: string }) {
   );
 }
 
+/** Person icon → /account (proxy.ts sends guests to /login first). */
+function AccountLink() {
+  const t = useTranslations('system');
+  return (
+    <Link
+      href="/account"
+      aria-label={t('account')}
+      className="grid size-12 press place-items-center rounded-button border-3 border-ink bg-white shadow-hard-sm [--press-x:3px] [--press-y:3px]"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-6">
+        <circle cx="12" cy="8.5" r="3.8" fill="none" stroke="var(--color-ink)" strokeWidth="2.4" />
+        <path
+          d="M4.5 20.5c1.2-4 4-5.8 7.5-5.8s6.3 1.8 7.5 5.8"
+          fill="none"
+          stroke="var(--color-ink)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+      </svg>
+    </Link>
+  );
+}
+
 /** Full-screen sticker-style nav for mobile. Native <dialog> for focus handling. */
 function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations();
@@ -99,7 +123,7 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             href={n.href}
             onClick={onClose}
             className="inline-block press rounded-sticker border-3 border-ink bg-white px-6 py-1 font-sticker text-4xl font-black text-ink shadow-sticker [--press-x:0px] [--press-y:6px]"
-            style={{ transform: `rotate(${[-2, 3, -1, 2][i]}deg)` }}
+            style={{ rotate: tilt([-2, 3, -1, 2, -2, 3][i] ?? 0) }}
           >
             {t(`nav.${n.key}`)}
           </Link>
@@ -112,7 +136,14 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
           <BoltPair side="end" />
         </div>
       </nav>
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-3 pb-[env(safe-area-inset-bottom)]">
+        <Link
+          href="/account"
+          onClick={onClose}
+          className={buttonClasses({ variant: 'ghost', size: 'sm' })}
+        >
+          {t('system.account')}
+        </Link>
         <LanguageToggle />
       </div>
     </dialog>
@@ -125,14 +156,14 @@ export function Header() {
   const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b-3 border-ink bg-white">
+    <header className="sticky top-0 z-40 border-b-3 border-ink bg-white pt-[env(safe-area-inset-top)]">
       <a
         href="#main"
         className="sr-only rounded-chip bg-yellow px-3 py-2 font-bold focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50"
       >
         {t('a11y.skipToContent')}
       </a>
-      <div className="mx-auto flex h-18 max-w-6xl items-center gap-4 px-4">
+      <div className="mx-auto flex h-18 max-w-6xl items-center gap-2 px-4 sm:gap-4">
         <Link href="/" aria-label={t('a11y.logo')} className="shrink-0">
           <Logo size={54} />
         </Link>
@@ -158,8 +189,9 @@ export function Header() {
           })}
         </nav>
 
-        <div className="ms-auto flex items-center gap-3">
+        <div className="ms-auto flex items-center gap-2 sm:gap-3">
           <LanguageToggle className="max-md:hidden" />
+          <AccountLink />
           <CartButton />
           <Link href="/menu" className={buttonClasses({ size: 'md', className: 'max-md:hidden' })}>
             {t('nav.orderNow')}

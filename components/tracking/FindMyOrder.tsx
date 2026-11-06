@@ -108,9 +108,22 @@ function PhoneOrders() {
     !otp.verify.isPending && otp.verify.mutate(c, { onSuccess: () => void mine.refetch() });
 
   let body;
-  if (mine.data) {
-    body = mine.data.length ? (
-      <OrderList orders={mine.data} />
+  if (mine.orders) {
+    body = mine.orders.length ? (
+      <>
+        <OrderList orders={mine.orders} />
+        {mine.hasNextPage && (
+          <p className="mt-4 text-center">
+            <Button
+              variant="ghost"
+              loading={mine.isFetchingNextPage}
+              onClick={() => void mine.fetchNextPage()}
+            >
+              {t('more')}
+            </Button>
+          </p>
+        )}
+      </>
     ) : (
       <Card className="p-2">
         <EmptyState title={t('mineEmpty')} action={<MenuLink />} />
@@ -217,7 +230,7 @@ function PhoneOrders() {
 
   return (
     <section>
-      <SectionTitle>{mine.data ? t('mine') : t('phoneTitle')}</SectionTitle>
+      <SectionTitle>{mine.orders ? t('mine') : t('phoneTitle')}</SectionTitle>
       {body}
     </section>
   );

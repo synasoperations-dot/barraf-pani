@@ -37,6 +37,8 @@ export const StoreStatus = z.object({
   /** ADDITION: store_settings.preorder_max_days (7) and preorder_cod_max_hours (2). */
   preorderMaxDays: z.number().int().positive(),
   preorderCodMaxHours: z.number().int().nonnegative(),
+  /** ADDITION: upcoming holidays (today and later), for the hours table and date pickers. */
+  holidays: z.array(Holiday),
   checkedAt: IsoDateTime,
 });
 export type StoreStatus = z.infer<typeof StoreStatus>;
@@ -83,6 +85,15 @@ export type Address = z.infer<typeof Address>;
 /** A new address sent with a quote/order (saved to the customer by the server). */
 export const AddressInput = Address.omit({ id: true, isDefault: true });
 export type AddressInput = z.infer<typeof AddressInput>;
+
+/** ADDITION: PATCH /api/me/addresses/[id]. `isDefault: true` clears the old default (one per customer). */
+export const AddressPatch = AddressInput.partial().extend({
+  isDefault: z.literal(true).optional(),
+});
+export type AddressPatch = z.infer<typeof AddressPatch>;
+
+/** Address labels the UI offers (stored as text in addresses.label). */
+export const ADDRESS_LABELS = ['home', 'work', 'other'] as const;
 
 /** orders.address_snapshot */
 export const AddressSnapshot = AddressInput.extend({

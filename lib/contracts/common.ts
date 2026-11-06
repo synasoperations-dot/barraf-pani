@@ -132,6 +132,12 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   NETWORK_ERROR: 0,
 };
 
+/**
+ * Mock-only session marker so proxy.ts can guard /account in dev (MSW can't set HttpOnly
+ * cookies). The real backend uses the Supabase auth cookies (`sb-*-auth-token`).
+ */
+export const MOCK_SESSION_COOKIE = 'bp_mock_session';
+
 /** Header names shared by client, mocks and backend. */
 export const HEADERS = {
   idempotencyKey: 'Idempotency-Key',

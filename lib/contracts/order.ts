@@ -258,6 +258,14 @@ export const Order = OrderBase.extend({
   review: OrderReview.nullable(),
 }).refine(totalsOk, TOTAL_MSG);
 export type Order = z.infer<typeof Order>;
+/** ADDITION: GET /api/orders/mine?cursor=&limit= (newest first). */
+export const OrdersPage = z.object({
+  orders: z.array(Order),
+  /** Pass back as `cursor` for the next page; null on the last page. */
+  nextCursor: z.string().nullable(),
+});
+export type OrdersPage = z.infer<typeof OrdersPage>;
+
 /** Unrefined shape for extension (admin view). */
 export const OrderShape = OrderBase;
 

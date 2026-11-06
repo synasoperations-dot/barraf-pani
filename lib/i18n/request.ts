@@ -2,11 +2,9 @@ import { cookies } from 'next/headers';
 import { getRequestConfig } from 'next-intl/server';
 import en, { type Messages } from './messages/en';
 import ur from './messages/ur';
+import { LOCALE_COOKIE, type AppLocale } from './config';
 
-export const LOCALES = ['en', 'ur'] as const;
-export type AppLocale = (typeof LOCALES)[number];
-export const LOCALE_COOKIE = 'NEXT_LOCALE';
-export const isRtl = (l: AppLocale) => l === 'ur';
+export { isRtl, LOCALE_COOKIE, LOCALES, type AppLocale } from './config';
 
 // ponytail: cookie-based locale (no /ur URL prefix), matching the folder structure in ARCHITECTURE §11.
 // Reading the cookie makes pages dynamic; menu *data* stays cached by tag. Move to an [locale]

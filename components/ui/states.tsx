@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
+import { tilt as tiltCss } from '@/lib/tilt';
 import { Button } from './Button';
 import { Bolt } from './motifs';
 
@@ -118,12 +119,13 @@ export function Tag({
 }) {
   return (
     <span
+      data-sticker
       className={clsx(
         'inline-flex items-center rounded-chip border-2 border-ink px-2 pt-0.5 font-price text-lg leading-6 tracking-[0.02em] uppercase',
         TAG_TONES[tone],
         className,
       )}
-      style={tilt ? { transform: `rotate(${tilt}deg)` } : undefined}
+      style={tilt ? { rotate: tiltCss(tilt) } : undefined}
     >
       {children}
     </span>

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { createContext, use, useState, type ReactNode } from 'react';
 import { PriceChip } from '@/components/ui/PriceChip';
+import { orderingMode, useStoreStatus } from '@/features/store/useStore';
 import { Stamp } from '@/components/ui/Stamp';
 import { StickerHeading } from '@/components/ui/StickerHeading';
 import { Blob, Wave } from '@/components/ui/motifs';
@@ -188,12 +189,14 @@ function ItemChip({
   const choose = hasRequiredChoice(menu, item);
   const full = variantLabel(variant);
   const out = item.isSoldOut || !variant.isAvailable;
+  // Closed with no pre-orders: nothing can be ordered, so chips can't add (pre-orders: they can).
+  const closed = orderingMode(useStoreStatus().data) === 'closed';
 
   return (
     <PriceChip
       price={variant.price}
       label={label}
-      disabled={out}
+      disabled={out || closed}
       aria-label={
         out
           ? t('menuPage.soldOutItem', { name })
@@ -217,7 +220,8 @@ function ItemChip({
       }
       className={clsx(
         'disabled:cursor-not-allowed',
-        !item.isSoldOut && 'disabled:line-through disabled:opacity-50',
+        out && !item.isSoldOut && 'disabled:line-through disabled:opacity-50',
+        closed && !out && 'disabled:opacity-60',
         // Compact pizza cells: smaller price, and the A/B label (first of two spans) smaller still.
         compact && 'gap-1! px-1.5! text-lg! [&>span:first-child:not(:last-child)]:text-sm',
       )}

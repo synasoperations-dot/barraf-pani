@@ -130,6 +130,7 @@ const tracking = {
     device: 'On this device',
     deviceEmpty: 'No orders on this device yet.',
     deviceFailed: "Some orders didn't load.",
+    more: 'Load more',
     phoneTitle: 'Find it by phone',
     phoneBody: "We'll text you a code to prove it's your number.",
     send: 'Send code',

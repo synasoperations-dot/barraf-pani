@@ -10,6 +10,7 @@ import { topCategories } from '@/features/menu/helpers';
 import { useMenu } from '@/features/menu/useMenu';
 import type { Menu } from '@/lib/contracts';
 import { localized } from '@/lib/format';
+import { tilt } from '@/lib/tilt';
 
 const TILTS = [-3, 2, -1, 3, -2, 1];
 const pill = (bg = 'bg-white') =>
@@ -30,7 +31,7 @@ export function CravingsView({ menu, loading }: { menu: Menu | undefined; loadin
         <ul className="mx-auto mt-10 flex max-w-6xl flex-wrap justify-center gap-4">
           {menu
             ? topCategories(menu).map((c, i) => (
-                <li key={c.id} style={{ rotate: `${TILTS[i % TILTS.length]}deg` }}>
+                <li key={c.id} style={{ rotate: tilt(TILTS[i % TILTS.length] ?? 0) }}>
                   <Link href={`/menu#${c.slug}`} className={pill()}>
                     {localized(c.name, locale)}
                   </Link>
@@ -43,7 +44,7 @@ export function CravingsView({ menu, loading }: { menu: Menu | undefined; loadin
                 </li>
               ))}
           {/* Always there, so the section is never blank (menu failed to load, slow network…). */}
-          <li style={{ rotate: '-2deg' }}>
+          <li style={{ rotate: tilt(-2) }}>
             <Link href="/menu" className={pill('bg-yellow')}>
               <Bolt size={22} />
               {t('home.cravings.seeMenu')}

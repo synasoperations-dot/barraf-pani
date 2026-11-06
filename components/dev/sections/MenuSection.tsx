@@ -135,6 +135,7 @@ const STATUS: StoreStatus = {
   openingHours: [],
   preorderMaxDays: 7,
   preorderCodMaxHours: 2,
+  holidays: [],
   checkedAt: '2026-11-06T00:00:00+05:00',
 };
 

@@ -45,7 +45,14 @@ export const api = {
   addresses: () => request('GET', '/api/me/addresses', { schema: z.array(C.Address) }),
   addAddress: (body: C.AddressInput) =>
     request('POST', '/api/me/addresses', { schema: C.Address, body }),
+  /** ADDITION: edit an address or make it the default (only one default). */
+  updateAddress: (id: string, body: C.AddressPatch) =>
+    request('PATCH', `/api/me/addresses/${enc(id)}`, { schema: C.Address, body }),
   deleteAddress: (id: string) => request('DELETE', `/api/me/addresses/${enc(id)}`, { schema: Ok }),
+
+  /* ---------- Contact form (ADDITION) ---------- */
+  contact: (body: NoTurnstile<C.ContactRequest>) =>
+    request('POST', '/api/contact', { schema: C.ContactResponse, body, turnstile: true }),
 
   /* ---------- Orders ---------- */
   placeOrder: (body: NoTurnstile<C.PlaceOrderRequest>, idempotencyKey: string) =>
@@ -62,7 +69,12 @@ export const api = {
   /** ADDITION: one review per order, after delivered / picked_up. */
   reviewOrder: (token: string, body: C.ReviewRequest) =>
     request('POST', `/api/orders/${enc(token)}/review`, { schema: C.Order, body }),
-  myOrders: () => request('GET', '/api/orders/mine', { schema: z.array(C.Order) }),
+  /** Newest first, paginated (ADDITION: cursor + limit). */
+  myOrders: (cursor?: string | null, limit = 10) =>
+    request('GET', '/api/orders/mine', {
+      schema: C.OrdersPage,
+      query: { cursor: cursor ?? undefined, limit: String(limit) },
+    }),
 
   /* ---------- Payments ---------- */
   initiatePayment: (

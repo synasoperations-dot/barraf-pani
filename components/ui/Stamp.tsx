@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
+import { tilt as tiltCss } from '@/lib/tilt';
 
 const TONES = {
   ink: 'border-ink bg-ink text-white',
@@ -41,7 +42,7 @@ export function Stamp({
     // The `stamp` keyframes already rotate −12°, so the wrapper adds only the difference.
     <span
       className={clsx('inline-block', className)}
-      style={{ rotate: `${animate ? tilt + 12 : tilt}deg` }}
+      style={{ rotate: tiltCss(animate ? tilt + 12 : tilt) }}
     >
       <span
         className={clsx(

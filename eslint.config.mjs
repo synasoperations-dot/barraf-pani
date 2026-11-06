@@ -76,7 +76,8 @@ export default defineConfig([
   { files: ['tailwind.config.ts'], rules: { 'no-restricted-syntax': ['error', noFetch] } },
   // The MSW bootstrap (and the mocks themselves) may import /mocks.
   {
-    files: ['mocks/**', 'components/dev/MswBootstrap.tsx', 'instrumentation.ts'],
+    // Unit tests may use the fixtures as realistic data.
+    files: ['mocks/**', 'components/dev/MswBootstrap.tsx', 'instrumentation.ts', '**/*.test.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: [supabasePattern] }] },
   },
 ]);

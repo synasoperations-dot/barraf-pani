@@ -2,6 +2,7 @@ import { delay, HttpResponse, sse } from 'msw';
 import * as C from '@/lib/contracts';
 import { ALLOW_ONLINE_PAYMENTS } from '@/lib/flags';
 import {
+  addOutbox,
   bookingFeed,
   codCheck,
   createBooking,
@@ -23,7 +24,9 @@ import {
   requiresOtp,
   resolveZone,
   save,
+  seedAccountDemo,
   setDealsEventsOverride,
+  setOptIn,
   soldOutFeed,
   storeStatus,
   toBooking,
@@ -58,6 +61,17 @@ const realtimeEvent = (o: C.Order): C.OrderRealtimeEvent => ({
 });
 
 const publicCustomer = (c: CustomerRec): C.Customer => C.Customer.parse(c);
+
+/**
+ * Mock stand-in for the Supabase auth cookie, so proxy.ts can guard /account in dev.
+ * The real session cookie is HttpOnly and set by the server (§2.3).
+ */
+function setSessionCookie(on: boolean) {
+  if (typeof document === 'undefined') return;
+  document.cookie = on
+    ? `${C.MOCK_SESSION_COOKIE}=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`
+    : `${C.MOCK_SESSION_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
 
 /** A saved address must belong to the customer (§4.1 ADDRESS_NOT_FOUND). */
 function ownAddress(customer: CustomerRec | null, addressId: string) {
@@ -145,18 +159,27 @@ export const customerHttpHandlers = [
     const customer = upsertCustomer(phone, null);
     customer.phoneVerifiedAt ??= now();
     db.session.customerId = customer.id;
+    if (is('account_demo')) seedAccountDemo(customer);
     save();
+    setSessionCookie(true);
     return json({ customer: publicCustomer(customer), isNew } satisfies C.OtpVerifyResponse);
   }),
   route('post', '/api/auth/logout', () => {
     db.session.customerId = null;
     save();
+    setSessionCookie(false);
     return ok();
   }),
   route('get', '/api/me', () => json(publicCustomer(requireCustomer()))),
   route('patch', '/api/me', async ({ request }) => {
     const c = requireCustomer();
-    Object.assign(c, await body(request, C.UpdateCustomerRequest));
+    const { whatsappOptIn, whatsappOptInSource, ...rest } = await body(
+      request,
+      C.UpdateCustomerRequest,
+    );
+    Object.assign(c, rest);
+    if (whatsappOptIn !== undefined && whatsappOptIn !== c.whatsappOptIn)
+      setOptIn(c, whatsappOptIn, whatsappOptInSource ?? null);
     save();
     return json(publicCustomer(c));
   }),
@@ -164,7 +187,7 @@ export const customerHttpHandlers = [
   route('post', '/api/me/addresses', async ({ request }) => {
     const c = requireCustomer();
     const input = await body(request, C.AddressInput);
-    resolveZone(input.location); // reject pins outside every zone up front
+    // Outside every zone is allowed: the address is kept for pickup reference (the UI warns).
     const address: C.Address = {
       ...input,
       id: `adr_${randomToken().slice(0, 12)}`,
@@ -174,13 +197,36 @@ export const customerHttpHandlers = [
     save();
     return json(address, 201);
   }),
+  route('patch', '/api/me/addresses/:id', async (info) => {
+    const c = requireCustomer();
+    const a = ownAddress(c, param(info, 'id'));
+    const { isDefault, ...patch } = await body(info.request, C.AddressPatch);
+    Object.assign(a, patch);
+    // addresses.is_default: at most one per customer (§5.4).
+    if (isDefault) for (const x of c.addresses) x.isDefault = x.id === a.id;
+    save();
+    return json(a);
+  }),
   route('delete', '/api/me/addresses/:id', (info) => {
     const c = requireCustomer();
     const id = param(info, 'id');
-    ownAddress(c, id);
+    const gone = ownAddress(c, id);
     c.addresses = c.addresses.filter((a) => a.id !== id);
+    if (gone.isDefault && c.addresses[0]) c.addresses[0].isDefault = true;
     save();
     return ok();
+  }),
+
+  /* ---------- Contact form (ADDITION) ---------- */
+  route('post', '/api/contact', async ({ request }) => {
+    const input = await body(request, C.ContactRequest);
+    if (!input.turnstileToken) fail('TURNSTILE_FAILED', 'Please try again.');
+    rateLimit(db.bookingAttempts, `contact:${input.phone}`, 3, 60 * 60_000); // per phone (per IP: backend)
+    const reference = `MSG-${randomToken().slice(0, 6).toUpperCase()}`;
+    // Data deletion requests reach staff, who anonymise the customer (§7).
+    addOutbox(`staff.contact_${input.topic}`, `contact:${reference}`);
+    save();
+    return json({ ok: true, reference } satisfies C.ContactResponse, 201);
   }),
 
   /* ---------- Orders (§4.1 pipeline) ---------- */
@@ -293,9 +339,19 @@ export const customerHttpHandlers = [
     save();
     return json(toCustomerOrder(rec));
   }),
-  route('get', '/api/orders/mine', () => {
+  route('get', '/api/orders/mine', ({ request }) => {
     const c = requireCustomer();
-    return json(db.orders.filter((o) => o.customerId === c.id).map(toCustomerOrder));
+    const q = new URL(request.url).searchParams;
+    const start = Math.max(0, Number(q.get('cursor') ?? 0) || 0);
+    const limit = Math.min(50, Math.max(1, Number(q.get('limit') ?? 10) || 10));
+    const mine = db.orders
+      .filter((o) => o.customerId === c.id)
+      .sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt));
+    const page = mine.slice(start, start + limit);
+    return json({
+      orders: page.map(toCustomerOrder),
+      nextCursor: start + limit < mine.length ? String(start + limit) : null,
+    } satisfies C.OrdersPage);
   }),
 
   /* ---------- Payments (§4.3) ---------- */

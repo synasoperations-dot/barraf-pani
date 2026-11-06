@@ -1,26 +1,45 @@
 'use client';
 
-import type { Menu, Order } from '@/lib/contracts';
+import type { Menu, Order, QuotedLine } from '@/lib/contracts';
 import { findItemById, itemImage } from '@/features/menu/helpers';
-import { useCart } from '@/stores/cart';
+import { useCart, type CartEntry } from '@/stores/cart';
+
+export type ReorderIssue =
+  | { kind: 'sold_out' | 'inactive'; line: QuotedLine }
+  | { kind: 'price_changed'; line: QuotedLine; was: number; now: number };
+
+export interface ReorderPlan {
+  /** Lines that can go in the cart, priced at TODAY's menu (estimate; the server quote decides). */
+  add: Omit<CartEntry, 'key'>[];
+  /** Shown in the review sheet before anything is added. Price changes are still in `add`. */
+  issues: ReorderIssue[];
+}
 
 /**
- * "Reorder" / "Order again": put an order's lines back in the cart (intent + display snapshot).
- * Prices in the snapshot are today's menu prices (estimate); the server quote decides (§2.4).
- * Lines whose item or variant is gone or sold out are skipped. Returns how many were skipped.
+ * Re-validate an old order against the current menu: inactive or removed items and variants
+ * are dropped, sold-out ones dropped, unavailable add-ons removed, price changes flagged.
  */
-export function reorder(order: Order, menu: Menu): { added: number; skipped: number } {
-  const cart = useCart.getState();
-  let added = 0;
+export function planReorder(order: Order, menu: Menu): ReorderPlan {
+  const plan: ReorderPlan = { add: [], issues: [] };
   for (const line of order.lines) {
     const item = findItemById(menu, line.itemId);
-    const variant = item?.variants.find((v) => v.id === line.variantId && v.isAvailable);
-    if (!item || !item.isActive || item.isSoldOut || !variant) continue;
+    const variant = item?.variants.find((v) => v.id === line.variantId);
+    if (!item || !item.isActive || !variant) {
+      plan.issues.push({ kind: 'inactive', line });
+      continue;
+    }
+    if (item.isSoldOut || !variant.isAvailable) {
+      plan.issues.push({ kind: 'sold_out', line });
+      continue;
+    }
     const mods = line.modifiers.flatMap((m) => {
       const live = menu.modifierGroups.flatMap((g) => g.modifiers).find((x) => x.id === m.id);
       return live?.isAvailable ? [live] : [];
     });
-    cart.add({
+    const unitPrice = variant.price + mods.reduce((n, m) => n + m.price, 0);
+    if (unitPrice !== line.unitPrice)
+      plan.issues.push({ kind: 'price_changed', line, was: line.unitPrice, now: unitPrice });
+    plan.add.push({
       itemId: item.id,
       variantId: variant.id,
       modifierIds: mods.map((m) => m.id),
@@ -30,11 +49,24 @@ export function reorder(order: Order, menu: Menu): { added: number; skipped: num
         name: item.name,
         size: variant.size,
         option: variant.option,
-        unitPrice: variant.price + mods.reduce((n, m) => n + m.price, 0),
+        unitPrice,
         image: itemImage(menu, item),
       },
     });
-    added++;
   }
-  return { added, skipped: order.lines.length - added };
+  return plan;
+}
+
+/** Put the plan's lines in the cart. */
+export const applyReorder = (plan: ReorderPlan) =>
+  plan.add.forEach((l) => useCart.getState().add(l));
+
+/**
+ * One-step "Reorder" (receipt, expired payment): adds what still exists. Returns how many
+ * lines were skipped.
+ */
+export function reorder(order: Order, menu: Menu): { added: number; skipped: number } {
+  const plan = planReorder(order, menu);
+  applyReorder(plan);
+  return { added: plan.add.length, skipped: order.lines.length - plan.add.length };
 }

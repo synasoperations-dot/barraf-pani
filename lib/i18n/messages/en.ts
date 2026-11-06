@@ -6,11 +6,20 @@ import checkout from './en/checkout';
 import payment from './en/payment';
 import receipt from './en/receipt';
 import tracking from './en/tracking';
+import account from './en/account';
+import deals from './en/deals';
+import contact from './en/contact';
+import about from './en/about';
+import faq from './en/faq';
+import legal from './en/legal';
+import system from './en/system';
 
 /** English copy. Voice: short, punchy, confident. Errors are friendly, never blamey. */
 const en = {
   meta: {
-    title: 'Barraf Paani · Made fresh. Served furious.',
+    title: 'Barraf Paani · Fast Food in Paradise City, Jhang',
+    /** `%s` = the page title. */
+    template: '%s · Barraf Paani, Jhang',
     description:
       'Fries, burgers, wings, wraps and pizza in Paradise City, Jhang. Order for delivery or pickup.',
   },
@@ -84,6 +93,8 @@ const en = {
     openingSoon: 'Opening soon. Doors at {time}.',
     paused: 'Orders are paused for a bit.',
     pausedReason: 'Orders are paused: {reason}',
+    holiday: 'Closed today for a holiday.',
+    holidayNote: 'Closed today: {note}.',
     preorderHint: 'You can still schedule an order.',
   },
   stage: {
@@ -108,6 +119,19 @@ const en = {
     instagram: 'Instagram',
     facebook: 'Facebook',
     tiktok: 'TikTok',
+    explore: 'Explore',
+    language: 'Language',
+    findOnGoogle: 'Find us on Google',
+    reviewOnGoogle: 'Review us on Google',
+    links: {
+      menu: 'Menu',
+      deals: 'Deals & Events',
+      about: 'About the spot',
+      contact: 'Visit & contact',
+      faq: 'FAQ',
+      track: 'Track an order',
+      account: 'Your account',
+    },
   },
   common: {
     close: 'Close',
@@ -136,6 +160,13 @@ const en = {
   payment,
   receipt,
   tracking,
+  account,
+  deals,
+  contact,
+  about,
+  faq,
+  legal,
+  system,
   status: {
     pending_payment: 'Awaiting payment',
     placed: 'New',

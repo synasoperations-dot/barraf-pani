@@ -64,6 +64,11 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    /* Sticker tilts multiply by this (lib/tilt.ts), so they mirror in RTL. */
+    --dir: 1;
+  }
+  [dir='rtl'] {
+    --dir: -1;
   }
   body {
     background-color: var(--color-paper);
@@ -71,9 +76,17 @@
     @apply font-body;
     line-height: 1.55;
   }
+  /* Tilted stickers poke past the edge; never let them cause a horizontal scroll at 360px. */
+  body {
+    overflow-x: clip;
+  }
   /* Nastaliq needs generous line height. */
   :lang(ur) body {
     line-height: 1.9;
+  }
+  /* Tight display leading clips Nastaliq/Lalezar ascenders inside stickers, chips and buttons. */
+  :lang(ur) :is(.leading-none, .leading-tight, .leading-6, .leading-snug) {
+    line-height: 1.6;
   }
   :focus-visible {
     outline: 3px solid var(--color-blue-deep);

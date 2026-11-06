@@ -7,6 +7,7 @@ import { track } from '@/lib/analytics';
 import type { Category } from '@/lib/contracts';
 import { localized } from '@/lib/format';
 import { prefersReducedMotion } from '@/lib/motion';
+import { tilt } from '@/lib/tilt';
 
 const behavior = (): ScrollBehavior => (prefersReducedMotion() ? 'auto' : 'smooth');
 
@@ -84,7 +85,7 @@ export function CategoryBar({ cats }: { cats: Category[] }) {
               'inline-flex min-h-11 shrink-0 press items-center rounded-sticker border-3 border-ink px-3 font-sticker text-base font-black whitespace-nowrap text-ink shadow-hard-sm [--press-x:3px] [--press-y:3px]',
               active === c.slug ? 'bg-yellow' : 'bg-white',
             )}
-            style={{ rotate: `${i % 2 ? 1.5 : -1.5}deg` }}
+            style={{ rotate: tilt(i % 2 ? 1.5 : -1.5) }}
           >
             {localized(c.name, locale)}
           </a>

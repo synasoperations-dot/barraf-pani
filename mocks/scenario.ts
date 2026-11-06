@@ -33,6 +33,7 @@ export const SCENARIOS = {
   booking_declined: 'Bookings auto-decline after ~10 s',
   event_full: 'Event bookings are refused: event full',
   mixed_sources: 'Admin board receives website / WhatsApp / phone orders',
+  account_demo: 'Login seeds 12 past orders + 2 addresses; Fillet Fury sold out (reorder review)',
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
 
