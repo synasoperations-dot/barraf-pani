@@ -82,7 +82,7 @@ function rateLimit(bucket: Record<string, number[]>, key: string, max: number, w
   bucket[key] = [...hits, Date.now()];
 }
 
-export const customerHandlers = [
+export const customerHttpHandlers = [
   /* ---------- Public reads ---------- */
   route('get', '/api/menu', () => json(db.menu)),
   route('get', '/api/store/status', () => json(storeStatus())),
@@ -273,6 +273,26 @@ export const customerHandlers = [
     transition(rec, 'cancelled', 'customer', rec.order.customer.name, reason);
     return json(toCustomerOrder(rec));
   }),
+  route('post', '/api/orders/:token/review', async (info) => {
+    const rec = findOrderByToken(param(info, 'token'));
+    const { rating, comment } = await body(info.request, C.ReviewRequest);
+    if (rec.order.status !== 'delivered' && rec.order.status !== 'picked_up')
+      fail('INVALID_TRANSITION', 'You can review once the order is with you.');
+    // reviews.order_id is unique (§6): one review per order.
+    if (db.reviews.some((r) => r.orderNumber === rec.order.number))
+      fail('INVALID_TRANSITION', 'This order already has a review.');
+    db.reviews.unshift({
+      id: `rev_${randomToken().slice(0, 12)}`,
+      orderNumber: rec.order.number,
+      customerName: rec.order.customer.name?.split(' ')[0] ?? null,
+      rating,
+      comment,
+      isPublished: false,
+      createdAt: now(),
+    });
+    save();
+    return json(toCustomerOrder(rec));
+  }),
   route('get', '/api/orders/mine', () => {
     const c = requireCustomer();
     return json(db.orders.filter((o) => o.customerId === c.id).map(toCustomerOrder));
@@ -315,7 +335,11 @@ export const customerHandlers = [
         provider,
         status: 'pending',
         // Mock gateway round trip: straight to the return page, which shows "confirming…".
-        redirect: { url: `/track/${orderToken}?payment=return`, method: 'GET', fields: {} },
+        redirect: {
+          url: `/pay/return`,
+          method: 'GET',
+          fields: { token: orderToken, provider },
+        },
         expiresAt: new Date(rec.payment.expiresAt).toISOString(),
       };
       return { status: 200, body: out };
@@ -325,7 +349,7 @@ export const customerHandlers = [
   // Real backend verifies the gateway hash then redirects; it never marks the order paid.
   route('get', '/api/payments/:provider/return', (info) => {
     const token = new URL(info.request.url).searchParams.get('token') ?? '';
-    return HttpResponse.redirect(`/track/${token}?payment=return`, 302);
+    return HttpResponse.redirect(`/pay/return?token=${encodeURIComponent(token)}`, 302);
   }),
 
   /* ---------- Bookings (ADDITION) ---------- */
@@ -343,8 +367,11 @@ export const customerHandlers = [
   route('get', '/api/bookings/:token', (info) =>
     json(toBooking(findBooking(param(info, 'token')))),
   ),
+];
 
-  /* ---------- Realtime (SSE; Supabase broadcast later) ---------- */
+/* ---------- Realtime (SSE; Supabase broadcast later) ---------- */
+// Built lazily: msw's sse() needs EventSource, which the Node dev server (mocks/node.ts) lacks.
+const customerStreams = () => [
   sse('*/api/realtime/orders/:token', ({ client, params, request }) => {
     const token = String(params.token);
     const rec = db.orders.find((r) => r.order.publicToken === token);
@@ -367,3 +394,8 @@ export const customerHandlers = [
     request.signal.addEventListener('abort', off);
   }),
 ];
+
+export const customerHandlers =
+  typeof EventSource === 'undefined'
+    ? customerHttpHandlers
+    : [...customerHttpHandlers, ...customerStreams()];

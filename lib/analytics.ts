@@ -12,7 +12,7 @@ export interface AnalyticsEvents {
     itemId: string;
     variantId: string;
     qty: number;
-    source: 'menu' | 'item' | 'deal';
+    source: 'menu' | 'item' | 'deal' | 'home' | 'cart' | 'reorder';
   };
   cart_viewed: { lines: number; estimate: number };
   checkout_started: { lines: number; fulfilment: 'delivery' | 'pickup' };
@@ -35,6 +35,8 @@ function distinctId() {
 
 /** Never send personal data (phone, name, address) as props. */
 export function track<E extends keyof AnalyticsEvents>(event: E, props: AnalyticsEvents[E]) {
+  // Dev: make the funnel visible in the console (filter "[analytics]").
+  if (process.env.NODE_ENV !== 'production') console.info('[analytics]', event, props);
   if (!KEY || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
   const body = JSON.stringify({
     api_key: KEY,

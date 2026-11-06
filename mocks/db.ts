@@ -392,6 +392,9 @@ export function storeStatus(): C.StoreStatus {
     allowPreorders: db.settings.allowPreorders,
     minOrderValue: storeMin(),
     shopPhone: db.settings.shopPhone,
+    openingHours: db.hours,
+    preorderMaxDays: db.settings.preorderMaxDays,
+    preorderCodMaxHours: db.settings.preorderCodMaxHours,
     checkedAt: now(),
   };
 }
@@ -560,11 +563,34 @@ export function toCustomerOrder(rec: OrderRec): C.Order {
     completedAt: _cm,
     cashCollectedAt: _cc,
     cancelReason: _cr,
-    releasedAt: _rl,
+    releasedAt,
+    rider,
     events,
     ...rest
   } = rec.order;
-  return { ...rest, events: events.map(({ status, at, note }) => ({ status, at, note })) };
+  const riderStaff =
+    rider && rec.order.status === 'out_for_delivery'
+      ? db.staff.find((s) => s.id === rider.id)
+      : undefined;
+  const review = db.reviews.find((r) => r.orderNumber === rec.order.number);
+  return {
+    ...rest,
+    events: events.map(({ status, at, note }) => ({ status, at, note })),
+    rider: riderStaff
+      ? { name: riderStaff.name, phone: riderStaff.phone ?? db.settings.shopPhone }
+      : null,
+    releasesAt:
+      preorderReleaseAt(rec) !== null && !releasedAt
+        ? new Date(preorderReleaseAt(rec)!).toISOString()
+        : null,
+    review: review ? { rating: review.rating, comment: review.comment } : null,
+  };
+}
+
+/** Pre-orders reach the kitchen `preorder_release_minutes` before their time (§9). */
+export function preorderReleaseAt(rec: OrderRec): number | null {
+  if (!rec.order.scheduledFor) return null;
+  return new Date(rec.order.scheduledFor).getTime() - db.settings.preorderReleaseMinutes * 60_000;
 }
 
 /** Staff view; the rider sees the full phone only on their active order (§7). */
@@ -608,6 +634,11 @@ export function transition(
   o.events.push({ status: to, at, note, actorType, actorName });
   if (to === 'accepted') o.acceptedAt = at;
   if (to === 'ready') o.readyAt = at;
+  // Mock timer: nobody assigned a rider from the admin board, so the first rider takes it.
+  if (to === 'out_for_delivery' && !o.rider) {
+    const rider = db.staff.find((s) => s.role === 'rider' && s.isActive);
+    if (rider) o.rider = { id: rider.id, name: rider.name };
+  }
   if (to === 'delivered' || to === 'picked_up') {
     o.completedAt = at;
     if (o.paymentMethod === 'cod') {
@@ -683,6 +714,14 @@ export function tick() {
       continue;
     }
     if (!rec.autoAdvance || rec.rejectAt) continue;
+    // §9: pre-orders wait until their release time, then the normal flow starts.
+    const releaseAt = preorderReleaseAt(rec);
+    if (releaseAt !== null && !rec.order.releasedAt) {
+      if (Date.now() < releaseAt) continue;
+      rec.order.releasedAt = now();
+      rec.lastChangeAt = Date.now();
+      save();
+    }
     for (
       let next = FLOW[rec.order.fulfilment][rec.order.status];
       next;

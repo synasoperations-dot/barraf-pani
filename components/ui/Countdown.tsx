@@ -47,6 +47,7 @@ export function Countdown({ to, onExpire, className }: CountdownProps) {
   return (
     <span
       role="timer"
+      suppressHydrationWarning
       aria-label={text ? t('left', { time: text }) : t('expired')}
       className={clsx('font-price tracking-[0.02em] tabular-nums', className)}
     >

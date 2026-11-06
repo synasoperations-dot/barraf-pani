@@ -1,3 +1,12 @@
+import home from './en/home';
+import menuPage from './en/menu';
+import item from './en/item';
+import cartFlow from './en/cart';
+import checkout from './en/checkout';
+import payment from './en/payment';
+import receipt from './en/receipt';
+import tracking from './en/tracking';
+
 /** English copy. Voice: short, punchy, confident. Errors are friendly, never blamey. */
 const en = {
   meta: {
@@ -47,6 +56,8 @@ const en = {
     estimateNote: 'Estimate. Final total is confirmed at checkout.',
     remove: 'Remove {name}',
     added: '{name} added',
+    addedToast: 'Added · {name}',
+    undo: 'Undo',
   },
   qty: {
     label: 'Quantity',
@@ -116,11 +127,15 @@ const en = {
     offlineBody: "Check your connection and we'll pick up where you left off.",
     emptyTitle: 'Nothing to see here',
   },
-  home: {
-    headline: 'Made fresh. Served furious.',
-    sub: 'Fries, burgers, wings, wraps and pizza. Paradise City, Jhang.',
-    comingSoon: 'The full menu lands here next.',
-  },
+  // Per-screen namespaces live in ./en/*.ts (one file per area, so screens never collide).
+  home,
+  menuPage,
+  item,
+  cartFlow,
+  checkout,
+  payment,
+  receipt,
+  tracking,
   status: {
     pending_payment: 'Awaiting payment',
     placed: 'New',
@@ -169,28 +184,41 @@ const en = {
   },
   errors: {
     STORE_CLOSED: "We're closed right now. Schedule it for later?",
+    STORE_CLOSED_until: "We're closed right now. Back {time}. Schedule it for later?",
     ITEM_SOLD_OUT: 'Something in your cart just sold out. We highlighted it.',
     OUTSIDE_ZONE: "That spot's outside our delivery area. Pickup works though!",
-    BELOW_MIN_ORDER: 'Add a little more. Minimum order is Rs {minOrder}.',
+    BELOW_MIN_ORDER: 'Add Rs {shortBy} more. Minimum order is Rs {minOrder}.',
     ADDRESS_NOT_FOUND: "We couldn't find that address. Pick it again?",
     COD_NOT_ALLOWED: "Cash on delivery isn't available for this order. Try another way to pay.",
+    COD_NOT_ALLOWED_blocked:
+      "Cash on delivery isn't available on this number. Call us and we'll sort it out.",
+    COD_NOT_ALLOWED_over_cap:
+      "That's a big order! Cash on delivery has a limit. Pay online or pick it up instead.",
+    COD_NOT_ALLOWED_preorder_too_far:
+      'Cash on delivery works for orders up to 2 hours ahead. Pay online or pick a sooner time.',
     PREORDER_INVALID: "That time doesn't work. Pick a slot in the next 7 days while we're open.",
     PROMO_INVALID: "That code didn't work.",
     PROMO_EXPIRED: 'That code has expired.',
     PROMO_LIMIT: 'That code has been used up.',
+    PROMO_MIN_ORDER: 'That code needs an order of at least Rs {minOrder}.',
     TOO_LATE_TO_CANCEL: 'The kitchen already started. Call us at {phone} to change it.',
     RATE_LIMITED: 'Easy, tiger. Try again in a moment.',
+    RATE_LIMITED_seconds: 'Easy, tiger. Try again in {seconds}s.',
+    RATE_LIMITED_minutes:
+      'Easy, tiger. Try again in {minutes, plural, one {# minute} other {# minutes}}.',
     IDEMPOTENCY_CONFLICT: 'Your order changed while sending. Review it and try again.',
     IN_PROGRESS: 'Still sending your order. Hang tight.',
     PAYMENT_PENDING: "We're still confirming your payment.",
     VALIDATION_FAILED: 'Something needs a second look.',
     UNAUTHENTICATED: 'Verify your phone number to continue.',
+    UNAUTHENTICATED_otp: 'First cash order from this number? Verify it with a quick code.',
     FORBIDDEN: "You don't have access to that.",
     NOT_FOUND: "We couldn't find that.",
     OTP_INVALID: "That code isn't right. Check it and try again.",
     OTP_EXPIRED: 'That code expired. We can send a new one.',
     TURNSTILE_FAILED: "We couldn't confirm you're human. Try again.",
-    DUPLICATE_ORDER_SUSPECTED: 'You placed this same order a moment ago. Place it again?',
+    DUPLICATE_ORDER_SUSPECTED:
+      'You placed this same order a couple of minutes ago. Place it again?',
     VERSION_CONFLICT: 'Someone else just updated this. Refreshed.',
     INVALID_TRANSITION: "That step isn't possible right now.",
     EVENT_FULL: 'That event is full. Try another date or a table booking.',

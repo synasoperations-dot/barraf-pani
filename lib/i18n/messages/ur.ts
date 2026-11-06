@@ -1,4 +1,12 @@
 import type { Messages } from './en';
+import home from './ur/home';
+import menuPage from './ur/menu';
+import item from './ur/item';
+import cartFlow from './ur/cart';
+import checkout from './ur/checkout';
+import payment from './ur/payment';
+import receipt from './ur/receipt';
+import tracking from './ur/tracking';
 
 // TODO translate: machine-drafted Urdu so RTL layout can be tested. Every string needs native review
 // for tone ("Made fresh. Served furious." voice) before launch. Keys must stay identical to en.ts.
@@ -50,6 +58,8 @@ const ur: Messages = {
     estimateNote: 'اندازہ۔ حتمی رقم چیک آؤٹ پر طے ہوگی۔', // TODO translate
     remove: '{name} ہٹائیں', // TODO translate
     added: '{name} شامل ہو گیا', // TODO translate
+    addedToast: 'شامل ہو گیا · {name}', // TODO translate
+    undo: 'واپس', // TODO translate
   },
   qty: {
     label: 'تعداد', // TODO translate
@@ -119,11 +129,14 @@ const ur: Messages = {
     offlineBody: 'کنکشن چیک کریں، ہم وہیں سے شروع کریں گے۔', // TODO translate
     emptyTitle: 'یہاں کچھ نہیں', // TODO translate
   },
-  home: {
-    headline: 'تازہ بنا، جوش سے پیش', // TODO translate
-    sub: 'فرائز، برگر، ونگز، ریپس اور پیزا۔ پیراڈائز سٹی، جھنگ۔', // TODO translate
-    comingSoon: 'پورا مینو جلد یہاں ہوگا۔', // TODO translate
-  },
+  home,
+  menuPage,
+  item,
+  cartFlow,
+  checkout,
+  payment,
+  receipt,
+  tracking,
   status: {
     pending_payment: 'ادائیگی کا انتظار', // TODO translate
     placed: 'نیا', // TODO translate
@@ -172,22 +185,32 @@ const ur: Messages = {
   },
   errors: {
     STORE_CLOSED: 'ہم ابھی بند ہیں۔ بعد کے لیے شیڈول کریں؟', // TODO translate
+    STORE_CLOSED_until: 'ہم ابھی بند ہیں۔ {time} واپس۔ بعد کے لیے آرڈر شیڈول کریں؟', // TODO translate
     ITEM_SOLD_OUT: 'آپ کی کارٹ میں کچھ ابھی ختم ہو گیا۔ ہم نے نشان لگا دیا ہے۔', // TODO translate
     OUTSIDE_ZONE: 'یہ جگہ ہمارے ڈیلیوری علاقے سے باہر ہے۔ پک اپ ممکن ہے!', // TODO translate
     BELOW_MIN_ORDER: 'تھوڑا اور شامل کریں۔ کم از کم آرڈر Rs {minOrder} ہے۔', // TODO translate
     ADDRESS_NOT_FOUND: 'یہ پتہ نہیں ملا۔ دوبارہ چنیں؟', // TODO translate
     COD_NOT_ALLOWED: 'اس آرڈر پر کیش آن ڈیلیوری دستیاب نہیں۔ کوئی اور طریقہ آزمائیں۔', // TODO translate
+    COD_NOT_ALLOWED_blocked: 'اس نمبر پر کیش آن ڈیلیوری دستیاب نہیں۔ ہمیں کال کریں۔', // TODO translate
+    COD_NOT_ALLOWED_over_cap:
+      'بڑا آرڈر! کیش آن ڈیلیوری کی حد ہے۔ آن لائن ادائیگی کریں یا پک اپ کریں۔', // TODO translate
+    COD_NOT_ALLOWED_preorder_too_far:
+      'کیش آن ڈیلیوری صرف 2 گھنٹے تک پہلے کے آرڈرز پر ہے۔ آن لائن ادائیگی کریں یا جلدی کا وقت چنیں۔', // TODO translate
     PREORDER_INVALID: 'یہ وقت نہیں چلے گا۔ اگلے 7 دنوں میں ہمارے کھلنے کا وقت چنیں۔', // TODO translate
     PROMO_INVALID: 'یہ کوڈ نہیں چلا۔', // TODO translate
     PROMO_EXPIRED: 'یہ کوڈ ختم ہو چکا ہے۔', // TODO translate
     PROMO_LIMIT: 'یہ کوڈ پورا استعمال ہو چکا ہے۔', // TODO translate
+    PROMO_MIN_ORDER: 'اس کوڈ کے لیے کم از کم Rs {minOrder} کا آرڈر چاہیے۔', // TODO translate
     TOO_LATE_TO_CANCEL: 'کچن شروع کر چکا ہے۔ تبدیلی کے لیے {phone} پر کال کریں۔', // TODO translate
     RATE_LIMITED: 'ذرا رکیں۔ تھوڑی دیر میں دوبارہ کوشش کریں۔', // TODO translate
+    RATE_LIMITED_seconds: 'ذرا رکیں۔ {seconds} سیکنڈ بعد دوبارہ کوشش کریں۔', // TODO translate
+    RATE_LIMITED_minutes: 'ذرا رکیں۔ {minutes} منٹ بعد دوبارہ کوشش کریں۔', // TODO translate
     IDEMPOTENCY_CONFLICT: 'بھیجتے وقت آپ کا آرڈر بدل گیا۔ دیکھ کر دوبارہ کوشش کریں۔', // TODO translate
     IN_PROGRESS: 'آپ کا آرڈر ابھی جا رہا ہے۔ تھوڑا انتظار کریں۔', // TODO translate
     PAYMENT_PENDING: 'ہم ابھی آپ کی ادائیگی کی تصدیق کر رہے ہیں۔', // TODO translate
     VALIDATION_FAILED: 'کچھ چیزیں دوبارہ دیکھنی ہیں۔', // TODO translate
     UNAUTHENTICATED: 'جاری رکھنے کے لیے اپنا فون نمبر تصدیق کریں۔', // TODO translate
+    UNAUTHENTICATED_otp: 'اس نمبر سے پہلا کیش آرڈر؟ ایک کوڈ سے تصدیق کریں۔', // TODO translate
     FORBIDDEN: 'آپ کو اس تک رسائی نہیں۔', // TODO translate
     NOT_FOUND: 'یہ نہیں ملا۔', // TODO translate
     OTP_INVALID: 'یہ کوڈ درست نہیں۔ چیک کر کے دوبارہ کوشش کریں۔', // TODO translate

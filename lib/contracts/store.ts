@@ -32,6 +32,11 @@ export const StoreStatus = z.object({
   allowPreorders: z.boolean(), // store_settings.allow_preorders
   minOrderValue: Rupees, // store_settings.min_order_value
   shopPhone: z.string(), // store_settings.shop_phone
+  /** ADDITION: public opening hours (Home "Find us", checkout slot picker). */
+  openingHours: z.array(OpeningHours), // opening_hours
+  /** ADDITION: store_settings.preorder_max_days (7) and preorder_cod_max_hours (2). */
+  preorderMaxDays: z.number().int().positive(),
+  preorderCodMaxHours: z.number().int().nonnegative(),
   checkedAt: IsoDateTime,
 });
 export type StoreStatus = z.infer<typeof StoreStatus>;

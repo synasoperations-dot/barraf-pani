@@ -5,7 +5,7 @@
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LanguageToggle } from '@/components/site/LanguageToggle';
 import { Badge } from '@/components/ui/Badge';
 import { Button, buttonClasses, type ButtonSize, type ButtonVariant } from '@/components/ui/Button';
@@ -37,40 +37,17 @@ import { Card, MenuBoard, Panel } from '@/components/ui/surfaces';
 import { toast } from '@/components/ui/Toast';
 import { OrderSource, OrderStatus, type GeoPoint } from '@/lib/contracts';
 import { bump, flyToCart, pop, stagger, staggerItem, stamp, CART_BUMP_EVENT } from '@/lib/motion';
+import { Label, Section } from './guide';
+import { HomeSection } from './sections/HomeSection';
+import { MenuSection } from './sections/MenuSection';
+import { ItemSection } from './sections/ItemSection';
+import { CartSection } from './sections/CartSection';
+import { CheckoutSection } from './sections/CheckoutSection';
+import { PaymentSection } from './sections/PaymentSection';
+import { ReceiptSection } from './sections/ReceiptSection';
+import { TrackingSection } from './sections/TrackingSection';
 
 /* ---------- Layout helpers ---------- */
-
-function Section({
-  id,
-  title,
-  note,
-  children,
-}: {
-  id: string;
-  title: string;
-  note?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      aria-labelledby={`${id}-h`}
-      className="scroll-mt-6 border-t-3 border-ink py-12"
-    >
-      <div className="mb-8 flex flex-col items-start gap-2">
-        <StickerHeading id={`${id}-h`} align="start" size="sm" tilt={-1.5}>
-          {title}
-        </StickerHeading>
-        {note && <p className="max-w-2xl text-muted">{note}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-const Label = ({ children }: { children: ReactNode }) => (
-  <p className="mb-2 font-mono text-xs font-bold tracking-wide text-muted uppercase">{children}</p>
-);
 
 /* ---------- Tokens ---------- */
 
@@ -969,6 +946,16 @@ export function StyleGuide() {
               </Card>
             </div>
           </Section>
+
+          {/* Screen components (prompt 2), one file per area. */}
+          <HomeSection />
+          <MenuSection />
+          <ItemSection />
+          <CartSection />
+          <CheckoutSection />
+          <PaymentSection />
+          <ReceiptSection />
+          <TrackingSection />
         </div>
       </GridPaper>
     </MotionConfig>

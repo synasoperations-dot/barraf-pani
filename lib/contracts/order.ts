@@ -236,11 +236,27 @@ const OrderBase = z.object({
   createdAt: IsoDateTime, // created_at
 });
 
+/** ADDITION: the rider card on the tracking page (only while out_for_delivery). */
+export const CustomerRider = z.object({ name: z.string(), phone: z.string() });
+export type CustomerRider = z.infer<typeof CustomerRider>;
+
+/** ADDITION: the customer's own review (one per order, §5.7). */
+export const OrderReview = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().nullable(),
+});
+export type OrderReview = z.infer<typeof OrderReview>;
+
 /** Customer view of an order (tracking page, my orders). */
-export const Order = OrderBase.extend({ events: z.array(TrackingEvent) }).refine(
-  totalsOk,
-  TOTAL_MSG,
-);
+export const Order = OrderBase.extend({
+  events: z.array(TrackingEvent),
+  /** ADDITION: rider_assignments → staff (name + phone), only while out_for_delivery. */
+  rider: CustomerRider.nullable(),
+  /** ADDITION: pre-orders: when the kitchen gets it (scheduled_for − release minutes); null once released or ASAP. */
+  releasesAt: IsoDateTime.nullable(),
+  /** ADDITION: reviews row for this order, if any. */
+  review: OrderReview.nullable(),
+}).refine(totalsOk, TOTAL_MSG);
 export type Order = z.infer<typeof Order>;
 /** Unrefined shape for extension (admin view). */
 export const OrderShape = OrderBase;
@@ -283,6 +299,13 @@ export type PlaceOrderResponse = z.infer<typeof PlaceOrderResponse>;
 
 export const CancelOrderRequest = z.object({ reason: z.string().trim().max(200).nullable() });
 export type CancelOrderRequest = z.infer<typeof CancelOrderRequest>;
+
+/** ADDITION: POST /api/orders/[token]/review: only after delivered / picked_up, once per order. */
+export const ReviewRequest = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(500).nullable(),
+});
+export type ReviewRequest = z.infer<typeof ReviewRequest>;
 
 /** Per-token realtime channel payload: status and ETA only (§4.6). */
 export const OrderRealtimeEvent = z.object({

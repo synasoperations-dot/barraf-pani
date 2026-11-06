@@ -13,6 +13,10 @@ export const SITE = {
   phone: '+920000000000', // TBC
   whatsapp: '+920000000000', // TBC
   timezone: 'Asia/Karachi',
+  /** TODO_CONFIRM: Google Business Profile "write a review" link (store settings later). */
+  googleReviewUrl: null as string | null,
+  /** Directions link. TBC with the real address / place id. */
+  mapsUrl: 'https://www.google.com/maps/search/?api=1&query=31.2695,72.3181',
   socials: { instagram: null, facebook: null, tiktok: null } as Record<
     'instagram' | 'facebook' | 'tiktok',
     string | null

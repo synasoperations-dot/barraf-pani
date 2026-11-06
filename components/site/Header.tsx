@@ -159,12 +159,9 @@ export function Header() {
         </nav>
 
         <div className="ms-auto flex items-center gap-3">
-          <LanguageToggle className="hidden md:inline-flex" />
+          <LanguageToggle className="max-md:hidden" />
           <CartButton />
-          <Link
-            href="/menu"
-            className={buttonClasses({ size: 'md', className: 'hidden md:inline-flex' })}
-          >
+          <Link href="/menu" className={buttonClasses({ size: 'md', className: 'max-md:hidden' })}>
             {t('nav.orderNow')}
           </Link>
           <button

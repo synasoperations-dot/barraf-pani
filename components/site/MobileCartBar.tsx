@@ -1,9 +1,13 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { formatAmount } from '@/lib/format';
 import { selectCount, selectEstimate, useCart } from '@/stores/cart';
 import { useUi } from '@/stores/ui';
+
+/** Routes with their own CTA (or no cart at all): the bar would cover it. */
+const HIDDEN_ON = /^\/(checkout|cart|order|pay|track|item)(\/|$)/;
 
 /** Floating ink bar on mobile: "N items · Delivery · Rs total · View cart". */
 export function MobileCartBar() {
@@ -12,7 +16,8 @@ export function MobileCartBar() {
   const total = useCart(selectEstimate);
   const fulfilment = useCart((s) => s.fulfilment);
   const setOpen = useUi((s) => s.setCartOpen);
-  if (count === 0) return null;
+  const pathname = usePathname();
+  if (count === 0 || HIDDEN_ON.test(pathname)) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">

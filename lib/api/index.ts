@@ -4,9 +4,10 @@
  */
 import { z } from 'zod';
 import * as C from '@/lib/contracts';
-import { request } from './client';
+import { request, type ServerCache } from './client';
 
 export { ApiError, isApiError, newIdempotencyKey, setTurnstileProvider } from './client';
+export type { ServerCache } from './client';
 
 const Ok = z.object({ ok: z.literal(true) });
 const enc = encodeURIComponent;
@@ -14,10 +15,13 @@ type NoTurnstile<T> = Omit<T, 'turnstileToken'>;
 
 export const api = {
   /* ---------- Public reads ---------- */
-  menu: () => request('GET', '/api/menu', { schema: C.Menu }),
-  storeStatus: () => request('GET', '/api/store/status', { schema: C.StoreStatus }),
+  // `cache` is for Server Component reads (features/*/server.ts); the browser omits it.
+  menu: (cache?: ServerCache) => request('GET', '/api/menu', { schema: C.Menu, cache }),
+  storeStatus: (cache?: ServerCache) =>
+    request('GET', '/api/store/status', { schema: C.StoreStatus, cache }),
   /** ADDITION */
-  dealsEvents: () => request('GET', '/api/deals-events', { schema: C.DealsEvents }),
+  dealsEvents: (cache?: ServerCache) =>
+    request('GET', '/api/deals-events', { schema: C.DealsEvents, cache }),
 
   /* ---------- Quotes ---------- */
   deliveryQuote: (body: C.DeliveryQuoteRequest) =>
@@ -55,6 +59,9 @@ export const api = {
     request('GET', `/api/orders/track/${enc(token)}`, { schema: C.Order, signal }),
   cancelOrder: (token: string, body: C.CancelOrderRequest) =>
     request('POST', `/api/orders/${enc(token)}/cancel`, { schema: C.Order, body }),
+  /** ADDITION: one review per order, after delivered / picked_up. */
+  reviewOrder: (token: string, body: C.ReviewRequest) =>
+    request('POST', `/api/orders/${enc(token)}/review`, { schema: C.Order, body }),
   myOrders: () => request('GET', '/api/orders/mine', { schema: z.array(C.Order) }),
 
   /* ---------- Payments ---------- */

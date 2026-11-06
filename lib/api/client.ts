@@ -44,6 +44,15 @@ interface RequestOptions<S extends z.ZodType> {
   /** Adds `turnstileToken` to the body. */
   turnstile?: boolean;
   signal?: AbortSignal;
+  /** Server Component reads only: Next.js data cache (tag `menu`, or a short revalidate). */
+  cache?: ServerCache;
+}
+
+/** Next.js fetch cache options for Server Component reads (ARCHITECTURE §2.1). */
+export interface ServerCache {
+  tags?: string[];
+  /** Seconds. */
+  revalidate?: number;
 }
 
 const MAX_IN_PROGRESS_RETRIES = 5;
@@ -77,10 +86,18 @@ async function once(
   headers: Record<string, string>,
   body: string | undefined,
   signal?: AbortSignal,
+  cache?: ServerCache,
 ) {
   let res: Response;
   try {
-    res = await fetch(url, { method, headers, body, credentials: 'same-origin', signal });
+    res = await fetch(url, {
+      method,
+      headers,
+      body,
+      credentials: 'same-origin',
+      signal,
+      ...(cache ? { next: cache } : {}),
+    });
   } catch (e) {
     if (signal?.aborted) throw e;
     throw new ApiError('NETWORK_ERROR', 'Network request failed', 0);
@@ -104,7 +121,15 @@ async function once(
 export async function request<S extends z.ZodType>(
   method: Method,
   path: string,
-  { schema, body, query, idempotencyKey, turnstile: withTurnstile, signal }: RequestOptions<S>,
+  {
+    schema,
+    body,
+    query,
+    idempotencyKey,
+    turnstile: withTurnstile,
+    signal,
+    cache,
+  }: RequestOptions<S>,
 ): Promise<z.infer<S>> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -119,7 +144,7 @@ export async function request<S extends z.ZodType>(
   let json: unknown;
   for (let attempt = 0; ; attempt++) {
     try {
-      json = await once(method, url, headers, serialized, signal);
+      json = await once(method, url, headers, serialized, signal, cache);
       break;
     } catch (e) {
       // §4.1: the same key is still processing → wait Retry-After and ask again (same key, same body).

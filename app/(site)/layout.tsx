@@ -6,7 +6,8 @@ import { Header } from '@/components/site/Header';
 import { MobileCartBar } from '@/components/site/MobileCartBar';
 import { StoreStatusBanner } from '@/components/site/StoreStatusBanner';
 
-export default function SiteLayout({ children }: { children: ReactNode }) {
+/** `modal` = the @modal parallel slot: /item/[slug] opens as a Sheet over the current page (intercepted). */
+export default function SiteLayout({ children, modal }: { children: ReactNode; modal: ReactNode }) {
   return (
     <>
       <Header />
@@ -17,6 +18,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </ViewTransition>
+      {modal}
       <Footer />
       <MobileCartBar />
       <CartDrawer />

@@ -77,7 +77,7 @@ function BaseDialog({
           type="button"
           onClick={onClose}
           aria-label={t('close')}
-          className="grid size-10 press place-items-center rounded-chip border-2 border-ink bg-white text-2xl leading-none shadow-hard-sm [--press-x:3px] [--press-y:3px]"
+          className="grid size-11 press place-items-center rounded-chip border-2 border-ink bg-white text-2xl leading-none shadow-hard-sm [--press-x:3px] [--press-y:3px]"
         >
           ×
         </button>

@@ -16,6 +16,8 @@ import {
 } from '@/lib/contracts';
 
 export type Unsubscribe = () => void;
+/** `live` = pushed over the stream; `polling` = the stream dropped and we poll every 12 s. */
+export type ConnectionStatus = 'live' | 'polling';
 
 const POLL_MS = 12_000; // within the 10–15 s window
 
@@ -26,7 +28,11 @@ interface Source<T> {
   poll: () => Promise<T[]>;
 }
 
-function subscribe<T>({ url, schema, poll }: Source<T>, onEvent: (e: T) => void): Unsubscribe {
+function subscribe<T>(
+  { url, schema, poll }: Source<T>,
+  onEvent: (e: T) => void,
+  onStatus?: (s: ConnectionStatus) => void,
+): Unsubscribe {
   let closed = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   let es: EventSource | undefined;
@@ -38,6 +44,7 @@ function subscribe<T>({ url, schema, poll }: Source<T>, onEvent: (e: T) => void)
 
   const startPolling = () => {
     if (timer || closed) return;
+    onStatus?.('polling');
     runPoll();
     timer = setInterval(runPoll, POLL_MS);
   };
@@ -45,6 +52,7 @@ function subscribe<T>({ url, schema, poll }: Source<T>, onEvent: (e: T) => void)
   if (typeof EventSource === 'undefined') startPolling();
   else {
     es = new EventSource(url);
+    es.onopen = () => onStatus?.('live');
     es.onmessage = (msg) => {
       const parsed = schema.safeParse(JSON.parse(msg.data as string));
       if (parsed.success) onEvent(parsed.data);
@@ -71,6 +79,7 @@ function subscribe<T>({ url, schema, poll }: Source<T>, onEvent: (e: T) => void)
 export function subscribeToOrder(
   token: string,
   onEvent: (e: OrderRealtimeEvent) => void,
+  onStatus?: (s: ConnectionStatus) => void,
 ): Unsubscribe {
   let last = '';
   return subscribe(
@@ -94,6 +103,7 @@ export function subscribeToOrder(
       },
     },
     onEvent,
+    onStatus,
   );
 }
 

@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { MswBootstrap } from '@/components/dev/MswBootstrap';
 import { Toaster } from '@/components/ui/Toast';
 import { isApiError } from '@/lib/api';
+import { useRecentOrders } from '@/features/orders/recent';
 import { useCart } from '@/stores/cart';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
   // Cart persists to localStorage; hydrate after mount so SSR and first render match.
   useEffect(() => {
     void useCart.persist.rehydrate();
+    void useRecentOrders.persist.rehydrate();
   }, []);
 
   return (

@@ -54,6 +54,9 @@ const nextConfig: NextConfig = {
       { source: '/:path*', headers: securityHeaders },
       // Tracking tokens must never leak via the Referer header (§2.1, §7).
       { source: '/track/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      // Receipt and payment pages carry the same token in the URL.
+      { source: '/order/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      { source: '/pay/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
     ];
   },
 };

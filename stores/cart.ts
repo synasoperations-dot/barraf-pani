@@ -31,15 +31,18 @@ interface CartState {
   fulfilment: Fulfilment;
   /** Item ids the server reported sold out; the cart highlights these lines. */
   soldOutItemIds: string[];
+  /** One promo code (no stacking, §5.6). Validated by the server quote, never in the browser. */
+  promoCode: string | null;
   add: (line: Omit<CartEntry, 'key'>) => void;
   setQty: (key: string, qty: number) => void;
   remove: (key: string) => void;
   clear: () => void;
   setFulfilment: (f: Fulfilment) => void;
   markSoldOut: (itemIds: string[]) => void;
+  setPromoCode: (code: string | null) => void;
 }
 
-const lineKey = (l: Pick<CartLine, 'itemId' | 'variantId' | 'modifierIds' | 'note'>) =>
+export const lineKey = (l: Pick<CartLine, 'itemId' | 'variantId' | 'modifierIds' | 'note'>) =>
   [l.itemId, l.variantId, [...l.modifierIds].sort().join('+'), l.note ?? ''].join('|');
 
 const clampQty = (n: number) => Math.max(1, Math.min(50, Math.round(n)));
@@ -50,6 +53,7 @@ export const useCart = create<CartState>()(
       lines: [],
       fulfilment: 'delivery',
       soldOutItemIds: [],
+      promoCode: null,
       add: (line) =>
         set((s) => {
           const key = lineKey(line);
@@ -65,9 +69,10 @@ export const useCart = create<CartState>()(
           lines: s.lines.map((l) => (l.key === key ? { ...l, qty: clampQty(qty) } : l)),
         })),
       remove: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
-      clear: () => set({ lines: [], soldOutItemIds: [] }),
+      clear: () => set({ lines: [], soldOutItemIds: [], promoCode: null }),
       setFulfilment: (fulfilment) => set({ fulfilment }),
       markSoldOut: (soldOutItemIds) => set({ soldOutItemIds }),
+      setPromoCode: (promoCode) => set({ promoCode: promoCode?.trim().toUpperCase() || null }),
     }),
     // Rehydrated in Providers after mount so server and first client render match.
     {
