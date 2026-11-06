@@ -46,7 +46,15 @@ const supabasePattern = {
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts', 'public/mockServiceWorker.js']),
+  globalIgnores([
+    '.next/**',
+    'out/**',
+    'build/**',
+    'next-env.d.ts',
+    'public/mockServiceWorker.js',
+    'test-results/**',
+    'playwright-report/**',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
@@ -77,7 +85,14 @@ export default defineConfig([
   // The MSW bootstrap (and the mocks themselves) may import /mocks.
   {
     // Unit tests may use the fixtures as realistic data.
-    files: ['mocks/**', 'components/dev/MswBootstrap.tsx', 'instrumentation.ts', '**/*.test.ts'],
+    files: [
+      'mocks/**',
+      'components/dev/MswBootstrap.tsx',
+      'instrumentation.ts',
+      'app/api/[[]...path[]]/route.ts',
+      '**/*.test.ts',
+      'e2e/**',
+    ],
     rules: { 'no-restricted-imports': ['error', { patterns: [supabasePattern] }] },
   },
 ]);

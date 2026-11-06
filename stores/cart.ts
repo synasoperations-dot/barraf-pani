@@ -1,7 +1,14 @@
 'use client';
 
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+
+/**
+ * localStorage in the browser; a no-op during server rendering. Without it zustand drops the
+ * persist API on the server and `useCart.persist.*` (hydration checks) throws during SSR.
+ */
+const noop: StateStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+export const browserStorage = () => (typeof window === 'undefined' ? noop : localStorage);
 import type {
   CartLine,
   Fulfilment,
@@ -77,7 +84,7 @@ export const useCart = create<CartState>()(
     // Rehydrated in Providers after mount so server and first client render match.
     {
       name: 'bp-cart-v1',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(browserStorage),
       version: 1,
       skipHydration: true,
     },

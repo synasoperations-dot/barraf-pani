@@ -150,6 +150,12 @@ export const api = {
       request('DELETE', `/api/admin/menu/items/${enc(id)}`, { schema: C.Item }),
     setSoldOut: (id: string, body: C.SoldOutRequest) =>
       request('POST', `/api/admin/menu/items/${enc(id)}/sold-out`, { schema: C.Item, body }),
+    /** ADDITION */
+    updateModifierGroup: (id: string, body: C.ModifierGroupPatch) =>
+      request('PATCH', `/api/admin/menu/modifier-groups/${enc(id)}`, {
+        schema: C.ModifierGroup,
+        body,
+      }),
     createCategory: (body: C.CategoryInput) =>
       request('POST', '/api/admin/menu/categories', { schema: C.Category, body }),
     updateCategory: (id: string, body: C.CategoryPatch) =>
@@ -190,6 +196,15 @@ export const api = {
       request('GET', '/api/admin/customers', { schema: z.array(C.AdminCustomer), query: { q } }),
     blockCustomer: (id: string, body: C.BlockRequest) =>
       request('POST', `/api/admin/customers/${enc(id)}/block`, { schema: C.AdminCustomer, body }),
+    /** ADDITION: manual order entry. Throws NOT_FOUND for a new number. */
+    customerLookup: (phone: string) =>
+      request('GET', '/api/admin/customers/lookup', {
+        schema: C.CustomerLookup,
+        query: { phone },
+      }),
+    /** ADDITION */
+    setCustomerCod: (id: string, body: C.CodAllowedRequest) =>
+      request('POST', `/api/admin/customers/${enc(id)}/cod`, { schema: C.AdminCustomer, body }),
     unblockCustomer: (id: string) =>
       request('POST', `/api/admin/customers/${enc(id)}/unblock`, { schema: C.AdminCustomer }),
     anonymizeCustomer: (id: string) =>
@@ -202,6 +217,9 @@ export const api = {
       request('POST', `/api/admin/refunds/${enc(id)}/${action}`, { schema: C.Refund }),
 
     riders: () => request('GET', '/api/admin/riders', { schema: z.array(C.Staff) }),
+    /** ADDITION */
+    updateRider: (id: string, body: C.RiderPatch) =>
+      request('PATCH', `/api/admin/riders/${enc(id)}`, { schema: C.Staff, body }),
     settlement: () =>
       request('GET', '/api/admin/riders/settlement', { schema: z.array(C.RiderSettlement) }),
     settleRider: (riderId: string) =>

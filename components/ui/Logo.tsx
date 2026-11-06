@@ -31,7 +31,7 @@ export function Logo({ size = 64, className, label }: LogoProps) {
     >
       <span className="text-blue-light" style={{ ...text, fontSize: size * 0.24 }}>
         BARRAF
-      </span>
+      </span>{' '}
       <span className="text-yellow" style={{ ...text, fontSize: size * 0.27 }}>
         PAANI
       </span>

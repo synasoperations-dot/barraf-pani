@@ -3,6 +3,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
 const isDev = process.env.NODE_ENV !== 'production';
+const SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 // TBC: real JazzCash / Easypaisa hosted-page hosts (docs/OPEN_QUESTIONS.md).
 const PAYMENT_FORM_HOSTS = [
@@ -12,6 +13,10 @@ const PAYMENT_FORM_HOSTS = [
 ];
 const TURNSTILE = 'https://challenges.cloudflare.com';
 const POSTHOG = 'https://*.posthog.com';
+// Only when Sentry is configured (instrumentation-client.ts).
+const SENTRY = process.env.NEXT_PUBLIC_SENTRY_DSN
+  ? ' https://*.ingest.sentry.io https://*.ingest.de.sentry.io'
+  : '';
 
 // ponytail: 'unsafe-inline' scripts because Next's inline RSC payload needs it without nonces.
 // Upgrade path: per-request nonces via proxy.ts once pages need it (§7 "strict CSP").
@@ -21,14 +26,15 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  `connect-src 'self' ${POSTHOG}`, // TODO(backend): add the Supabase https + wss hosts
+  `connect-src 'self' ${POSTHOG}${SENTRY}`, // TODO(backend): add the Supabase https + wss hosts
   "worker-src 'self'", // MSW service worker (dev)
   `frame-src ${TURNSTILE} https://www.instagram.com https://www.tiktok.com`, // reels load only after a click
   `form-action 'self' ${PAYMENT_FORM_HOSTS.join(' ')}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "object-src 'none'",
-  ...(isDev ? [] : ['upgrade-insecure-requests']),
+  // Only on an https site (a plain-http production preview on localhost would break).
+  ...(!isDev && SITE_ORIGIN.startsWith('https:') ? ['upgrade-insecure-requests'] : []),
 ].join('; ');
 
 const securityHeaders = [
@@ -60,10 +66,12 @@ const nextConfig: NextConfig = {
       { source: '/order/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
       { source: '/pay/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
       // Booking status pages carry their token too; account pages are personal.
-      ...['/booking/:path*', '/account/:path*', '/account'].map((source) => ({
-        source,
-        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
-      })),
+      ...['/booking/:path*', '/account/:path*', '/account', '/admin', '/admin/:path*'].map(
+        (source) => ({
+          source,
+          headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+        }),
+      ),
       // Private pages are never indexed (also Disallow'd in robots.ts and noindex'd in metadata).
       ...[
         '/track/:path*',
@@ -73,6 +81,8 @@ const nextConfig: NextConfig = {
         '/account',
         '/pay/:path*',
         '/login',
+        '/admin',
+        '/admin/:path*',
       ].map((source) => ({
         source,
         headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],

@@ -59,7 +59,9 @@ const MAX_IN_PROGRESS_RETRIES = 5;
 
 // ponytail: server-side reads need an absolute URL; set API_BASE_URL when the backend is real.
 const base = () =>
-  typeof window === 'undefined' ? (process.env.API_BASE_URL ?? 'http://localhost:3000') : '';
+  typeof window === 'undefined'
+    ? (process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`)
+    : '';
 
 function buildUrl(path: string, query?: RequestOptions<z.ZodType>['query']) {
   const params = new URLSearchParams();

@@ -34,7 +34,9 @@ Additional contrast rules found while building:
 
 - WhatsApp green with white text fails contrast, so the WhatsApp button uses **ink** text.
 - `orange-deep` on white is about 3.6:1, so it is fine for prices at Bebas display sizes but not for small text. Error messages use ink text with an orange "!" marker.
-- The small primary button (`size="sm"`) switches to ink text on orange.
+- **Primary button text:** white on orange only at `size="lg"`; at `sm` and `md` it is ink (`components/ui/Button.tsx`).
+- **Active states** (active nav link, the selected `SegmentedToggle` segment) use `blue-deep` with white text, not `blue`.
+- **Price chips on orange/blue panels** (`PriceChip tone="panel"`) get a `bg-ink/35` backing behind the white text.
 
 ## Typography (self-hosted via `next/font`, only these weights)
 
@@ -83,7 +85,7 @@ Files: `lib/fonts.ts` (declarations), `tailwind.config.ts` (`font-display` / `fo
 | --------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Button` + `buttonClasses()`                  | `Button.tsx`          | Variants `primary` (orange), `secondary` (yellow), `ghost` (white), `dark`, `whatsapp`; sizes `sm`/`md`/`lg`; `loading` (spinner + `aria-busy`, blocks double taps), `block`. **Pressed state:** moves by its shadow offset and the shadow goes to 0, like pressing a sticker into the page (`.press` utility; `--press-x/--press-y` set the offset). Use `buttonClasses()` on `<Link>`. |
 | `PriceChip`                                   | `PriceChip.tsx`       | Outlined price button. `tone="panel"` (white on orange/blue) or `"paper"`. On tap it flashes yellow and bounces (`scale 1.12, rotate −4°`, via Web Animations so focus is kept). `selected` = yellow.                                                                                                                                                                                    |
-| `SegmentedToggle`                             | `SegmentedToggle.tsx` | Delivery/Pickup. Native radios (arrow keys, screen readers). Active segment is blue.                                                                                                                                                                                                                                                                                                     |
+| `SegmentedToggle`                             | `SegmentedToggle.tsx` | Delivery/Pickup. Native radios (arrow keys, screen readers). Active segment is `blue-deep` (contrast).                                                                                                                                                                                                                                                                                   |
 | `Stepper`                                     | `Stepper.tsx`         | Quantity −/+ with 44px targets, Bebas number, polite live region.                                                                                                                                                                                                                                                                                                                        |
 | `Card`, `MenuBoard`, `Panel`                  | `surfaces.tsx`        | Card: white, 3px, 22px radius, 6px shadow, optional `interactive` press. MenuBoard: grid paper, 28px radius, 8px shadow. Panel: `orange` / `orange-deep` / `blue` (rings), optional `blobs`.                                                                                                                                                                                             |
 | `Sheet`, `Drawer`                             | `Dialog.tsx`          | Native `<dialog>` + `showModal()`: background inert, focus moved in and restored, Esc closes, backdrop click closes. Sheet = bottom sheet on mobile, centered modal on desktop. Drawer = slides from the inline-end edge (flips in RTL). Enter animation via `@starting-style`, no JS animation library.                                                                                 |
@@ -121,7 +123,8 @@ Short, punchy, confident. Headlines: "Made fresh. Served furious.", "What's the 
 
 ## Accessibility baseline
 
-- Visible focus: 3px `blue-deep` outline with offset on every interactive element.
+- Visible focus (`app/globals.css`, `:focus-visible`): **3px ink outline, offset 4px, plus a 4px yellow ring** (through Tailwind's ring variable, so hard shadows keep it). The outline turns white on `bg-ink` surfaces (kitchen board, footer, cart bar). One style everywhere, customer and staff.
+- Contrast: see the rules under Color tokens (primary text ink below `lg`, `blue-deep` for active states, `bg-ink/35` behind panel price chips). Axe reports 0 serious or critical issues on every page ([PAGES › Accessibility](PAGES.md#accessibility)).
 - Touch targets ≥ 44px. Skip link to `#main`.
 - Native controls underneath custom visuals (radios, checkboxes, `<dialog>`).
 - RTL: layout uses logical properties (`ms-`, `me-`, `start-`, `end-`, `text-start`), so `dir="rtl"` flips it.
@@ -143,3 +146,45 @@ Short, punchy, confident. Headlines: "Made fresh. Served furious.", "What's the 
 - **Urdu line height:** `:lang(ur)` lifts `leading-none/tight/6/snug` to 1.6 so Nastaliq and Lalezar never clip inside stickers, chips and buttons.
 - **LTR values in Urdu:** wrap standalone numbers, prices and phones in `dir="ltr"`; inside translated sentences the `ur` messages use `⁦…⁩` isolates.
 - **Mobile:** `viewport-fit=cover` + safe-area padding on the header, cart bar and footer; the cart bar hides while the keyboard is open; `body { overflow-x: clip }` guards against tilted stickers causing sideways scroll; haptics (`lib/haptics.ts`) on add-to-cart and order placed.
+
+## Staff apps (prompt 4)
+
+Same tokens, fonts and motifs as the customer site, but tuned for a busy counter and greasy fingers.
+
+- **Surfaces:** data areas are plain `paper` / white cards. No `GridPaper` behind tables or boards; grid paper appears only on the zone map.
+- **Touch targets:** 56px (`min-h-14`) for buttons, tabs and switches, more than the site's 44px.
+- **Type:** Lilita One (`font-display`) for **page titles only** (`AdminPage`). Bebas (`font-price`) for order numbers, prices, totals and timers, always `dir="ltr"` with tabular numbers. Everything else is DM Sans.
+- **`StatusTag` / `SourceTag`** (`components/ui/StatusTag.tsx`): every order shows its status and source as icon + label + lightness, never colour alone. Sources: WEB (white, globe), WHATSAPP (whatsapp green, chat), PHONE (yellow, phone), WALK-IN (paper, person), FOODPANDA (paper with a dashed border, bag).
+
+### Kit (`components/admin/kit.tsx`, `icons.tsx`)
+
+| Piece                 | Notes                                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AdminPage`           | Page frame: Lilita title, optional actions                                                                                                                                                                                     |
+| `Panel`               | White card, ink outline, hard shadow                                                                                                                                                                                           |
+| `Money`               | Bebas, LTR, tabular rupees                                                                                                                                                                                                     |
+| `Tabs` / `TabPanel`   | ARIA tabs; arrow keys follow reading direction (flipped in RTL); optional count bubble                                                                                                                                         |
+| `ConnectionDot`       | Live / reconnecting / offline, as dot + label                                                                                                                                                                                  |
+| `Switch`              | 56px row switch (native checkbox underneath)                                                                                                                                                                                   |
+| `ConfirmSheet`        | Confirmation for risky actions: optional **required reason**, optional **typed confirmation** (the button unlocks only when the exact text is typed, e.g. `ANONYMIZE`, or the cash amount), or **blocked** with an explanation |
+| `usePrint()`          | Renders a ticket into `#print-root`, opens the print dialog, then clears it                                                                                                                                                    |
+| `Icon`, `StickerIcon` | `icons.tsx`: one stroke icon set for nav and actions                                                                                                                                                                           |
+
+### Order card (`components/admin/OrderCard.tsx`)
+
+- A new `placed` order **flashes yellow** (`animate-flash`, motion-safe only) and shows a **countdown to auto-reject** (store setting, 8 min in the mocks).
+- After the manager-alert mark (6 min in the mocks), the card turns **orange** with a "Manager alerted" label.
+- A **call-back flag** marks COD orders that are far above the customer's usual spend.
+- The order number and total are big Bebas. Lines, notes and modifiers are in `OrderLines`.
+
+### Kitchen board (`components/admin/KitchenBoard.tsx`)
+
+An **ink board** (`bg-ink`, white text, white focus outline), landscape and fullscreen as a PWA. Big tickets with lines in large type. Bebas timers. Customer phone numbers are masked. Wake lock keeps the screen on. Changes made offline go into a queue and are sent on reconnect.
+
+### Print (`components/admin/print.tsx`, `app/globals.css`)
+
+`KotTicket`, `ReceiptTicket` and `BookingsSheet` render into `#print-root`. In `@media print`, only `#print-root` is shown. KOT and receipt tickets use the named page `@page kot` (80mm wide, 3mm margins, 74mm content) for thermal printers. The bookings sheet prints on a normal page.
+
+### Report charts (`components/admin/ReportCharts.tsx`)
+
+Chart.js, loaded with a dynamic import on `/admin/reports` only. Series colours come from `SERIES_TOKENS` = `blue-deep`, `orange`, `blue`, `orange-deep`, `muted`, in that order. The order is fixed and never cycled, so each colour stays with its entity. The palette was validated with the dataviz validator (colour-vision deficiency, normal vision and contrast all pass). Every chart has a legend and a **table view**, so no number depends on colour alone. The brand has only two hues, so walk-in and Foodpanda fall back to `orange-deep` / `muted` (see OPEN_QUESTIONS).

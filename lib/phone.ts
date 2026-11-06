@@ -23,3 +23,9 @@ export function formatPkPhoneInput(raw: string): string {
   digits = digits.slice(0, 11);
   return digits.length > 4 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : digits;
 }
+
+/** Kitchen views (§7): "+923001234567" → "0300 •••4567". Already-masked or "—" values pass through. */
+export function maskPkPhone(phone: string): string {
+  const m = /^\+92(3\d{2})\d{3}(\d{4})$/.exec(phone);
+  return m ? `0${m[1]} •••${m[2]}` : phone;
+}

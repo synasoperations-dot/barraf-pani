@@ -102,3 +102,24 @@ The printed menu shows two prices for these items, but not what each price means
 - **Locale** comes from a cookie (no `/ur` URL prefix), which keeps the §11 folder structure. Side effect: pages render dynamically, although the menu _data_ is still cached by tag. Move to an `[locale]` segment if fully static HTML is required.
 - **CSP** allows `'unsafe-inline'` scripts (Next.js inline payload). Move to nonces via `proxy.ts` in the backend phase.
 - **TypeScript 6** is pinned because typescript-eslint doesn't support TypeScript 7 yet.
+
+## Staff apps (prompt 4)
+
+**For the client:**
+
+- **Manager alert:** who gets it when an order sits unaccepted past 6 minutes, and how? It is a WhatsApp message to which number? Today the board only shows "Manager alerted" (`managerAlertMinutes` in `mocks/fixtures/store.ts`), and orders auto-reject at 8 minutes.
+- **Kitchen undo:** what should happen when the kitchen wants to undo a change that was already sent? Orders only move forward. A manager-PIN step-up endpoint is **not modelled**, so the kitchen board just says "ask a manager". Does the client want a PIN override on the kitchen tablet?
+- **KOT printer:** which printer model? Browser printing to an 80mm thermal printer (`@page kot`, today) vs PrintNode or similar for silent printing.
+- **WhatsApp tracking-link message** sent after manual orders (`trackingMessage` in `features/admin/manual.ts`, en + ur): confirm the wording. It needs Meta template approval if sent by the business API. The Urdu is machine-drafted.
+- **Call-back flag:** confirm the rule. A COD order is flagged when it is ≥ 2.5× the customer's average order, or ≥ Rs 5,000 on a first order (`callBackFlag` in `mocks/db.ts`).
+- **Refunds and exports:** confirm that refund approval and the reports CSV export are **owner-only** (managers can request refunds and view reports).
+- **Sold-out reset:** "Sold out today" resets at **05:00 PKT**. Confirm the time (a late-night store closes at 02:00).
+- **Rider app:** one rider per order. Cash settlement asks the manager to type the exact amount before marking it settled. Confirm both.
+
+**For the team:**
+
+- **Real QR code for TOTP enrolment:** the login screen shows a placeholder and the `otpauth://` secret. The backend can return the QR as an SVG.
+- **Reports chart palette:** the brand has only two hues (blue, orange), so walk-in and Foodpanda use `orange-deep` and `muted`. The designer may want to pick a fifth colour.
+- **Performance budget not met:** about 250 KB of JS against the ~150 KB target, and Lighthouse Perf 80–85 against ≥ 90 (see [PAGES › Performance](PAGES.md#performance)). Decide whether to invest in `zod/mini`, dropping client response validation in production, and lazy-loading the cart drawer and toaster.
+- **Maintenance flag at runtime:** `MAINTENANCE_MODE` is an env var read by `proxy.ts`, so changing it needs a redeploy. Switching it at runtime needs Edge Config or something similar that the proxy can read.
+- **Re-run Lighthouse against the real backend:** today's numbers come from `MOCK_API=server`.

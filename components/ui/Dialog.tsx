@@ -44,12 +44,29 @@ function BaseDialog({
   const titleId = useId();
   const t = useTranslations('common');
 
+  // The control that opened us. Native close() restores focus, but a sheet on an intercepted
+  // route (item detail) unmounts before it can, so put focus back ourselves if it was dropped.
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      opener.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      d.showModal();
+    }
     if (!open && d.open) d.close();
   }, [open]);
+  useEffect(
+    () => () => {
+      const el = opener.current;
+      requestAnimationFrame(() => {
+        const dropped = !document.activeElement || document.activeElement === document.body;
+        if (el?.isConnected && dropped) el.focus();
+      });
+    },
+    [],
+  );
 
   return (
     <dialog

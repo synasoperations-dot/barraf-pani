@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import type { Order, OrderStatus } from '@/lib/contracts';
 import { panelStates, screenFor, stepFor } from './panels';
 

@@ -125,8 +125,11 @@ export function subscribeToBooking(token: string, onEvent: (b: Booking) => void)
   );
 }
 
-/** Staff kitchen board: new and changed active orders. */
-export function subscribeToKitchen(onEvent: (e: KitchenEvent) => void): Unsubscribe {
+/** Staff subscription (orders board, kitchen board): new and changed active orders. */
+export function subscribeToKitchen(
+  onEvent: (e: KitchenEvent) => void,
+  onStatus?: (s: ConnectionStatus) => void,
+): Unsubscribe {
   const seen = new Map<string, number>();
   return subscribe(
     {
@@ -147,6 +150,7 @@ export function subscribeToKitchen(onEvent: (e: KitchenEvent) => void): Unsubscr
       },
     },
     onEvent,
+    onStatus,
   );
 }
 

@@ -25,6 +25,9 @@ export const storeSettingsFixture: StoreSettings = {
   preorderCodMaxHours: 2,
   preorderReleaseMinutes: 60,
   shopPhone: SITE.phone, // TBC
+  enabledPaymentMethods: ['cod', 'jazzcash', 'easypaisa'],
+  links: { whatsapp: SITE.phone, instagram: null, facebook: null, tiktok: null }, // TBC
+  maintenanceMode: false,
 };
 
 // TBC: opening hours. Mon–Thu 12:00–23:30; Fri–Sun 12:00–02:00 (past midnight).

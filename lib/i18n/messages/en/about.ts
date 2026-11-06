@@ -17,6 +17,7 @@ const about = {
     hint: 'Tap a photo to see it big.',
     soon: 'Photo soon',
     open: 'Open photo: {name}',
+    openPrefix: 'Open photo:',
     dialog: 'Photo {n} of {total}: {name}',
     prev: 'Previous photo',
     next: 'Next photo',

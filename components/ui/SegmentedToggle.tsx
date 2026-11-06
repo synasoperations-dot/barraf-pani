@@ -19,7 +19,7 @@ interface SegmentedToggleProps<T extends string> {
 
 /**
  * Delivery / Pickup style toggle. Native radios underneath, so arrow keys, focus and
- * screen readers work for free. Active segment is brand blue.
+ * screen readers work for free. Active segment is blue-deep.
  */
 export function SegmentedToggle<T extends string>({
   options,
@@ -43,8 +43,8 @@ export function SegmentedToggle<T extends string>({
           key={o.value}
           className={clsx(
             'relative flex min-h-11 cursor-pointer items-center rounded-input px-4 font-display text-lg transition-colors',
-            'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-deep',
-            o.value === value ? 'bg-blue text-white' : 'text-ink hover:bg-paper',
+            'has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-yellow has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink',
+            o.value === value ? 'bg-blue-deep text-white' : 'text-ink hover:bg-paper',
           )}
         >
           <input

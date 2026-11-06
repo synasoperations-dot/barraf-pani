@@ -13,6 +13,7 @@ import about from './en/about';
 import faq from './en/faq';
 import legal from './en/legal';
 import system from './en/system';
+import admin from './en/admin';
 
 /** English copy. Voice: short, punchy, confident. Errors are friendly, never blamey. */
 const en = {
@@ -167,6 +168,7 @@ const en = {
   faq,
   legal,
   system,
+  admin,
   status: {
     pending_payment: 'Awaiting payment',
     placed: 'New',

@@ -85,6 +85,11 @@ const config = {
           to: { backgroundPosition: '200% 0, 0 0, 0 0' },
         },
         'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        // New-order card on the staff boards: yellow ↔ white until someone accepts it.
+        flash: {
+          '0%, 100%': { backgroundColor: colors.yellow },
+          '50%': { backgroundColor: colors.white },
+        },
       },
       animation: {
         pop: `pop 260ms ${OVERSHOOT} both`,
@@ -92,6 +97,7 @@ const config = {
         bump: `bump 420ms ${OVERSHOOT}`,
         shimmer: 'shimmer 1.4s linear infinite',
         'fade-in': 'fade-in 200ms ease-out both',
+        flash: 'flash 1.2s steps(2, jump-none) infinite',
       },
     },
   },

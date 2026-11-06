@@ -14,6 +14,7 @@ import about from './ur/about';
 import faq from './ur/faq';
 import legal from './ur/legal';
 import system from './ur/system';
+import admin from './ur/admin';
 
 // REVIEW: machine-drafted Urdu so RTL layout can be tested. Every string needs native review
 // for tone ("Made fresh. Served furious." voice) before launch. Keys must stay identical to en.ts.
@@ -167,6 +168,7 @@ const ur: Messages = {
   faq,
   legal,
   system,
+  admin,
   status: {
     pending_payment: 'ادائیگی کا انتظار', // REVIEW
     placed: 'نیا', // REVIEW

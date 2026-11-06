@@ -87,7 +87,6 @@ export function Gallery() {
             <li key={tile.key} className="break-inside-avoid" style={{ rotate: tilt(tile.tilt) }}>
               <button
                 type="button"
-                aria-label={t('open', { name: name(tile.key) })}
                 onClick={(e) => {
                   opener.current = e.currentTarget;
                   setIndex(i);
@@ -97,6 +96,7 @@ export function Gallery() {
                   tile.aspect,
                 )}
               >
+                <span className="sr-only">{t('openPrefix')} </span>
                 <TileArt bg={tile.bg} label={name(tile.key)} />
               </button>
             </li>

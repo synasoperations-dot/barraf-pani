@@ -80,7 +80,7 @@ export function FriesUpsell({ menu, inSheet }: { menu: Menu; inSheet: boolean })
                     {name}
                   </span>
                   <span className="mt-auto flex min-h-8 items-center justify-between gap-1">
-                    <span className="font-price text-xl leading-none text-orange-deep">
+                    <span className="font-price text-2xl leading-none text-orange-deep">
                       +{t('price.rs', { amount })}
                     </span>
                     {justAdded === f.id ? (

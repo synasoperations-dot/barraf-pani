@@ -18,6 +18,7 @@ const about: Messages['about'] = {
     hint: 'بڑا دیکھنے کے لیے تصویر پر ٹیپ کریں۔', // REVIEW
     soon: 'تصویر جلد', // REVIEW
     open: 'تصویر کھولیں: {name}', // REVIEW
+    openPrefix: 'تصویر کھولیں:',
     dialog: 'تصویر {n} از {total}: {name}', // REVIEW
     prev: 'پچھلی تصویر', // REVIEW
     next: 'اگلی تصویر', // REVIEW

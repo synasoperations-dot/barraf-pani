@@ -34,6 +34,8 @@ export const SCENARIOS = {
   event_full: 'Event bookings are refused: event full',
   mixed_sources: 'Admin board receives website / WhatsApp / phone orders',
   account_demo: 'Login seeds 12 past orders + 2 addresses; Fillet Fury sold out (reorder review)',
+  admin_demo:
+    'Staff login seeds 2 weeks of orders, a live board, bookings, a refund and rider cash',
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
 

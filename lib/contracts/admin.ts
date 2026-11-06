@@ -5,13 +5,14 @@ import {
   CartLine,
   CustomerDetails,
   Fulfilment,
+  ORDER_TRANSITIONS,
   OrderShape,
   OrderSource,
   OrderStatus,
   PaymentMethod,
   Promo,
 } from './order';
-import { AddressInput, DeliveryZone, OpeningHours } from './store';
+import { Address, AddressInput, DeliveryZone, OpeningHours } from './store';
 
 /* ---------- Staff & auth (§5.4, §7) ---------- */
 
@@ -42,13 +43,61 @@ export const StaffLoginResponse = z.object({
 });
 export type StaffLoginResponse = z.infer<typeof StaffLoginResponse>;
 
-export const TwoFactorEnrolResponse = z.object({ otpauthUrl: z.string(), secret: z.string() });
+export const TwoFactorEnrolResponse = z.object({
+  otpauthUrl: z.string(),
+  secret: z.string(),
+  /** ADDITION: one-time recovery codes. Shown once after the first code verifies; the server keeps hashes only. */
+  recoveryCodes: z.array(z.string()).length(8),
+});
 export type TwoFactorEnrolResponse = z.infer<typeof TwoFactorEnrolResponse>;
 
 export const TwoFactorVerifyRequest = z.object({ code: z.string().regex(/^\d{6}$/) });
 export type TwoFactorVerifyRequest = z.infer<typeof TwoFactorVerifyRequest>;
 
 /* ---------- Orders ---------- */
+
+/** Front of house: sees full customer phones (Call / WhatsApp). The kitchen sees them masked (§7). */
+export const FRONT_ROLES: readonly StaffRole[] = ['owner', 'manager', 'cashier'];
+export const MANAGER_ROLES: readonly StaffRole[] = ['owner', 'manager'];
+
+/**
+ * Role check on top of ORDER_TRANSITIONS (§4.2). Shared by the admin UI (button gating) and the
+ * mocks; the backend enforces the same table inside transition_order.
+ * - owner / manager: every allowed move (so cancelling from `accepted` is manager-only).
+ * - cashier: front-of-house moves; cancel only while `placed`, or a failed delivery.
+ * - kitchen: accept / reject / preparing / ready. Never cancels.
+ * - rider: picked up (→ out_for_delivery), delivered, failed delivery.
+ */
+const ROLE_MOVES: Record<StaffRole, (from: OrderStatus, to: OrderStatus) => boolean> = {
+  owner: () => true,
+  manager: () => true,
+  cashier: (from, to) => to !== 'cancelled' || from === 'placed' || from === 'out_for_delivery',
+  kitchen: (_from, to) => ['accepted', 'rejected', 'preparing', 'ready'].includes(to),
+  rider: (from, to) =>
+    to === 'out_for_delivery' ||
+    to === 'delivered' ||
+    (from === 'out_for_delivery' && to === 'cancelled'),
+};
+
+export function canRoleMove(
+  role: StaffRole,
+  order: { status: OrderStatus; fulfilment: Fulfilment },
+  to: OrderStatus,
+) {
+  if (!ORDER_TRANSITIONS[order.status].includes(to)) return false;
+  if (to === 'out_for_delivery' && order.fulfilment === 'pickup') return false;
+  if (to === 'picked_up' && order.fulfilment === 'delivery') return false;
+  return ROLE_MOVES[role](order.status, to);
+}
+
+/** Every move this role may make on this order, in state-machine order. */
+export const allowedMoves = (
+  role: StaffRole,
+  order: { status: OrderStatus; fulfilment: Fulfilment },
+) => ORDER_TRANSITIONS[order.status].filter((to) => canRoleMove(role, order, to));
+
+/** Prep times staff pick when accepting (sets estimated_ready_at). */
+export const PREP_MINUTES = [10, 15, 20, 30] as const;
 
 /** order_events.actor_type */
 export const ActorType = z.enum(['customer', 'staff', 'system', 'payment', 'mcp']);
@@ -61,10 +110,19 @@ export const AdminOrder = OrderShape.extend({
   customer: z.object({
     id: Id,
     name: z.string().nullable(),
-    /** Masked except for the rider's active order (§7). */
+    /**
+     * Full E.164 for owner / manager / cashier (Call, WhatsApp) and on the rider's active order;
+     * masked for the kitchen and everyone else (§7). "—" once anonymised.
+     */
     phone: z.string(),
     orderCount: z.number().int().nonnegative(),
   }),
+  /**
+   * ADDITION: server-computed COD fraud flag (§7 "flag orders far above the customer's usual size
+   * for a call-back"). Mock rule: total ≥ 2.5 × the customer's average earlier order, or a first
+   * order ≥ Rs 5,000.
+   */
+  callBack: z.boolean(),
   rider: z.object({ id: Id, name: z.string() }).nullable(), // rider_assignments.rider_id
   acceptedAt: IsoDateTime.nullable(), // accepted_at
   readyAt: IsoDateTime.nullable(), // ready_at
@@ -85,6 +143,10 @@ export const AdminOrder = OrderShape.extend({
 export type AdminOrder = z.infer<typeof AdminOrder>;
 
 export const AdminOrderQuery = z.object({
+  /** ADDITION: BP number ("1042" or "BP-1042") or phone digits. */
+  q: z.string().trim().max(40).optional(),
+  /** ADDITION: one customer's history (admin customers page). */
+  customerId: Id.optional(),
   status: z.array(OrderStatus).optional(),
   source: z.array(OrderSource).optional(),
   from: IsoDateTime.optional(),
@@ -92,11 +154,23 @@ export const AdminOrderQuery = z.object({
 });
 export type AdminOrderQuery = z.infer<typeof AdminOrderQuery>;
 
-export const TransitionRequest = z.object({
-  to: OrderStatus,
-  version: z.number().int().nonnegative(),
-  note: z.string().trim().max(200).nullable(),
-});
+export const TransitionRequest = z
+  .object({
+    to: OrderStatus,
+    version: z.number().int().nonnegative(),
+    note: z.string().trim().max(200).nullable(),
+    /** ADDITION: on `accepted`, the prep time staff picked; sets estimated_ready_at (+ delivery ETA). */
+    prepMinutes: z
+      .number()
+      .int()
+      .refine((m) => (PREP_MINUTES as readonly number[]).includes(m))
+      .optional(),
+  })
+  // Reject and cancel need a reason: the customer and the audit trail see it.
+  .refine((t) => (t.to !== 'rejected' && t.to !== 'cancelled') || !!t.note, {
+    message: 'reason required',
+    path: ['note'],
+  });
 export type TransitionRequest = z.infer<typeof TransitionRequest>;
 
 export const AssignRiderRequest = z.object({ riderId: Id });
@@ -130,6 +204,23 @@ export const ManualOrderResponse = z.object({
 });
 export type ManualOrderResponse = z.infer<typeof ManualOrderResponse>;
 
+/** ADDITION: GET /api/admin/customers/lookup?phone= (manual order entry). 404 = new customer. */
+export const CustomerLookup = z.object({
+  customer: z.object({
+    id: Id,
+    name: z.string().nullable(),
+    phone: z.string(), // full E.164: staff typed it
+    isBlocked: z.boolean(),
+    blockReason: z.string().nullable(),
+    codAllowed: z.boolean(),
+    orderCount: z.number().int().nonnegative(),
+    addresses: z.array(Address),
+  }),
+  /** Newest first, up to 3, for "Repeat last order". */
+  recentOrders: z.array(AdminOrder),
+});
+export type CustomerLookup = z.infer<typeof CustomerLookup>;
+
 /** Staff realtime channel payload (§4.6). */
 export const KitchenEvent = z.object({
   type: z.enum(['order.created', 'order.updated']),
@@ -154,6 +245,16 @@ export const SoldOutRequest = z.object({
 });
 export type SoldOutRequest = z.infer<typeof SoldOutRequest>;
 
+/** ADDITION: PATCH /api/admin/menu/modifier-groups/[id]. */
+export const ModifierGroupPatch = z
+  .object({ minSelect: z.number().int().nonnegative(), maxSelect: z.number().int().positive() })
+  .refine((g) => g.minSelect <= g.maxSelect, { message: 'min ≤ max', path: ['minSelect'] });
+export type ModifierGroupPatch = z.infer<typeof ModifierGroupPatch>;
+
+/** Uploads: a client-side pre-check only; the server checks MIME + signature and re-encodes (§7). */
+export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+export const UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
 export const UploadResponse = z.object({ path: z.string() });
 export type UploadResponse = z.infer<typeof UploadResponse>;
 
@@ -173,6 +274,17 @@ export const StoreSettings = z.object({
   preorderCodMaxHours: z.number().int().nonnegative(), // preorder_cod_max_hours (2)
   preorderReleaseMinutes: z.number().int().positive(), // preorder_release_minutes (60)
   shopPhone: z.string(), // shop_phone
+  /** ADDITION: payment methods offered at checkout (online ones still need ALLOW_ONLINE_PAYMENTS). */
+  enabledPaymentMethods: z.array(PaymentMethod).min(1),
+  /** ADDITION: public links (footer, contact). null = not set yet (shown as TBC). */
+  links: z.object({
+    whatsapp: z.string().nullable(),
+    instagram: z.url().nullable(),
+    facebook: z.url().nullable(),
+    tiktok: z.url().nullable(),
+  }),
+  /** ADDITION: maintenance page on every customer page (backend feeds proxy.ts, e.g. via Edge Config). */
+  maintenanceMode: z.boolean(),
 });
 export type StoreSettings = z.infer<typeof StoreSettings>;
 
@@ -210,9 +322,15 @@ export const AdminCustomer = z.object({
   totalSpent: Rupees,
   whatsappOptIn: z.boolean(), // whatsapp_opt_in
   anonymizedAt: IsoDateTime.nullable(), // anonymized_at
+  /** ADDITION */
+  lastOrderAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
 });
 export type AdminCustomer = z.infer<typeof AdminCustomer>;
+
+/** ADDITION: POST /api/admin/customers/[id]/cod */
+export const CodAllowedRequest = z.object({ codAllowed: z.boolean() });
+export type CodAllowedRequest = z.infer<typeof CodAllowedRequest>;
 
 export const BlockRequest = z.object({ reason: z.string().trim().min(3).max(200) });
 export type BlockRequest = z.infer<typeof BlockRequest>;
@@ -263,6 +381,10 @@ export const RiderAssignment = z.object({
 export type RiderAssignment = z.infer<typeof RiderAssignment>;
 
 export const DeliveredRequest = z.object({ cashCollected: Rupees });
+
+/** ADDITION: PATCH /api/admin/riders/[id] */
+export const RiderPatch = z.object({ isActive: z.boolean() });
+export type RiderPatch = z.infer<typeof RiderPatch>;
 export type DeliveredRequest = z.infer<typeof DeliveredRequest>;
 
 export const RiderSettlement = z.object({
@@ -286,10 +408,26 @@ export type ReviewPatch = z.infer<typeof ReviewPatch>;
 
 /* ---------- Reports ---------- */
 
+const Count = z.number().int().nonnegative();
+
+/**
+ * Money and item figures count completed orders (delivered / picked_up); `allOrders` and the
+ * cancel / reject counts cover every order created in the range. Hours and days are Asia/Karachi.
+ */
 export const SalesReport = z.object({
   from: IsoDateTime,
   to: IsoDateTime,
   orderCount: z.number().int().nonnegative(),
+  /** ADDITION fields below, up to `byDay`. */
+  allOrders: Count,
+  cancelledCount: Count, // cancelled (incl. failed deliveries)
+  rejectedCount: Count, // rejected by staff or the auto-reject job
+  autoRejectedCount: Count, // rejected by the auto-reject job (actor_type = system)
+  bookingsConfirmed: Count,
+  byFulfilment: z.array(z.object({ fulfilment: Fulfilment, count: Count, total: Rupees })),
+  byHour: z.array(z.object({ hour: z.number().int().min(0).max(23), orders: Count })),
+  byCategory: z.array(z.object({ categoryId: Id, name: z.string(), qty: Count, total: Rupees })),
+  bySourceByDay: z.array(z.object({ date: z.iso.date(), source: OrderSource, count: Count })),
   grossSales: Rupees,
   discounts: Rupees,
   deliveryFees: Rupees,

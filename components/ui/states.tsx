@@ -58,7 +58,7 @@ function StateFrame({
           style={{ transform: 'scaleX(-1) rotate(-18deg)' }}
         />
       </div>
-      <h3 className="font-display text-3xl">{title}</h3>
+      <h2 className="font-display text-3xl">{title}</h2>
       {body && <p className="max-w-sm text-muted">{body}</p>}
       {action}
     </div>

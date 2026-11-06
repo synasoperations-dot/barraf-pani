@@ -8,23 +8,28 @@ import {
 } from 'next/font/google';
 
 // Self-hosted at build time by next/font. Only the weights the design uses.
+// Only the body face is preloaded; display faces swap in (on slow 4G, seven preloaded files
+// competed with the page's JS and pushed LCP back). Lighthouse notes: docs/PAGES.md.
 export const lilita = Lilita_One({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-lilita',
   display: 'swap',
+  preload: false,
 });
 export const poppins = Poppins({
-  weight: ['800', '900'],
+  weight: '900', // `font-black` only (800 was never used)
   subsets: ['latin'],
   variable: '--font-poppins',
   display: 'swap',
+  preload: false,
 });
 export const bebas = Bebas_Neue({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-bebas',
   display: 'swap',
+  preload: false,
 });
 export const dmSans = DM_Sans({
   weight: ['400', '500', '700'],

@@ -179,7 +179,7 @@ export function Header() {
                 className={clsx(
                   'rounded-chip border-2 px-3 py-1.5 font-display text-lg transition-colors',
                   active
-                    ? 'border-ink bg-blue text-white'
+                    ? 'border-ink bg-blue-deep text-white'
                     : 'border-transparent text-ink hover:border-ink',
                 )}
               >

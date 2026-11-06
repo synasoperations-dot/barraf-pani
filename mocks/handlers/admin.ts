@@ -1,6 +1,7 @@
 import { sse } from 'msw';
 import { z } from 'zod';
 import * as C from '@/lib/contracts';
+import { rankZones } from '@/lib/geo';
 import {
   applyBookingAction,
   codCheck,
@@ -20,6 +21,8 @@ import {
   requireStaff,
   resolveZone,
   save,
+  seedAdminDemo,
+  sessionStaff,
   setSoldOut,
   toAdminOrder,
   toBooking,
@@ -35,18 +38,20 @@ const MANAGERS: C.StaffRole[] = ['owner', 'manager'];
 const FRONT: C.StaffRole[] = ['owner', 'manager', 'cashier'];
 const ALL: C.StaffRole[] = ['owner', 'manager', 'kitchen', 'cashier', 'rider'];
 const ACTIVE: C.OrderStatus[] = ['placed', 'accepted', 'preparing', 'ready', 'out_for_delivery'];
+const PKT = 5 * 3_600_000;
 
-/** Role check on top of the state machine (§4.2). */
-function canMove(role: C.StaffRole, from: C.OrderStatus, to: C.OrderStatus) {
-  if (MANAGERS.includes(role)) return true;
-  if (role === 'rider')
-    return (
-      to === 'out_for_delivery' ||
-      to === 'delivered' ||
-      (from === 'out_for_delivery' && to === 'cancelled')
-    );
-  if (role === 'kitchen' || role === 'cashier') return to !== 'cancelled' || from === 'placed';
-  return false;
+/** Mock stand-in for the staff session (value = role), so proxy.ts can guard /admin in dev. */
+function setStaffCookie(role: C.StaffRole | null) {
+  if (typeof document === 'undefined') return;
+  document.cookie = role
+    ? `${C.MOCK_STAFF_COOKIE}=${role}; path=/; max-age=${60 * 60 * 12}; samesite=lax`
+    : `${C.MOCK_STAFF_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** The session is usable: set the marker and seed the demo data when asked to. */
+function sessionReady(staff: { role: C.StaffRole }) {
+  setStaffCookie(staff.role);
+  if (is('admin_demo')) seedAdminDemo();
 }
 
 function adminCustomer(c: CustomerRec): C.AdminCustomer {
@@ -66,15 +71,31 @@ function adminCustomer(c: CustomerRec): C.AdminCustomer {
     totalSpent: done.reduce((s, o) => s + o.order.total, 0),
     whatsappOptIn: c.whatsappOptIn,
     anonymizedAt: c.anonymizedAt,
+    lastOrderAt:
+      orders
+        .map((o) => o.order.createdAt)
+        .sort()
+        .at(-1) ?? null,
     createdAt: c.createdAt,
   };
+}
+
+/** "1042", "bp-1042" or phone digits ("0300 1234567" / "+92300…"). */
+function matchesQuery(rec: OrderRec, q: string) {
+  const digits = q.replace(/\D/g, '');
+  if (!digits) return false;
+  if (rec.order.number.slice(3) === digits) return true;
+  const phone = db.customers.find((c) => c.id === rec.customerId)?.phone ?? '';
+  const local = digits.startsWith('0') ? `92${digits.slice(1)}` : digits;
+  return digits.length >= 4 && (phone.includes(digits) || phone.includes(local));
 }
 
 const find = <T>(list: T[], pred: (x: T) => boolean, what: string) =>
   list.find(pred) ?? fail('NOT_FOUND', `${what} not found.`);
 const findCustomer = (id: string) => find(db.customers, (c) => c.id === id, 'Customer');
 const findItem = (id: string) => find(db.menu.items, (i) => i.id === id, 'Item');
-const riders = () => db.staff.filter((s) => s.role === 'rider' && s.isActive);
+const allRiders = () => db.staff.filter((s) => s.role === 'rider');
+const riders = () => allRiders().filter((s) => s.isActive);
 
 function assignmentView(
   rec: OrderRec,
@@ -115,10 +136,11 @@ function crud<T extends { id: string }>(
   schema: z.ZodType<Omit<T, 'id'>>,
   prefix: string,
   roles = MANAGERS,
+  readRoles = roles,
 ) {
   return [
     route('get', path, () => {
-      requireStaff(roles);
+      requireStaff(readRoles);
       return json(list());
     }),
     route('post', path, async ({ request }) => {
@@ -155,6 +177,7 @@ export const adminHandlers = [
         : 'ok';
     db.session.staffId = staff.id;
     db.session.staffPending = next === 'ok' ? null : next;
+    if (next === 'ok') sessionReady(staff);
     save();
     return json({ staff: publicStaff(staff), next } satisfies C.StaffLoginResponse);
   }),
@@ -166,6 +189,7 @@ export const adminHandlers = [
     return json({
       secret,
       otpauthUrl: `otpauth://totp/BarrafPaani:${encodeURIComponent(staff.email)}?secret=${secret}&issuer=BarrafPaani`,
+      recoveryCodes: Array.from({ length: 8 }, () => randomToken().slice(0, 10).toUpperCase()),
     } satisfies C.TwoFactorEnrolResponse);
   }),
   route('post', '/api/admin/auth/2fa/verify', async ({ request }) => {
@@ -176,12 +200,14 @@ export const adminHandlers = [
     if (code !== MOCK_OTP) fail('OTP_INVALID', 'That code is not right.');
     staff.twoFactorEnabled = true;
     db.session.staffPending = null;
+    sessionReady(staff);
     save();
     return json(publicStaff(staff));
   }),
   route('post', '/api/admin/auth/logout', () => {
     db.session.staffId = null;
     db.session.staffPending = null;
+    setStaffCookie(null);
     save();
     return ok();
   }),
@@ -195,8 +221,12 @@ export const adminHandlers = [
     const sources = q.getAll('source');
     const from = q.get('from');
     const to = q.get('to');
+    const search = q.get('q');
+    const customerId = q.get('customerId');
     return json(
       db.orders
+        .filter((r) => !search || matchesQuery(r, search))
+        .filter((r) => !customerId || r.customerId === customerId)
         .filter((r) => !statuses.length || statuses.includes(r.order.status))
         .filter((r) => !sources.length || sources.includes(r.order.source))
         .filter((r) => !from || r.order.createdAt >= from)
@@ -280,11 +310,22 @@ export const adminHandlers = [
         );
         if (!C.ORDER_TRANSITIONS[o.status].includes(input.to) || !fits)
           fail('INVALID_TRANSITION', `Cannot move from ${o.status} to ${input.to}.`);
-        if (!canMove(staff.role, o.status, input.to))
+        if (!C.canRoleMove(staff.role, o, input.to))
           fail('FORBIDDEN', 'Your role cannot make that change.');
         rec.autoAdvance = false; // staff took over
         rec.rejectAt = null;
-        if (input.to === 'cancelled') o.cancelReason = input.note;
+        if (input.to === 'cancelled' || input.to === 'rejected') o.cancelReason = input.note;
+        if (input.to === 'accepted') {
+          // Prep time → ETAs the customer sees (§4.2 "updated ETAs").
+          const prep = input.prepMinutes ?? 20;
+          const zone = o.address ? (rankZones(o.address.location, db.zones)[0] ?? null) : null;
+          const readyAt = Date.now() + prep * 60_000;
+          o.estimatedReadyAt = new Date(readyAt).toISOString();
+          if (o.fulfilment === 'delivery')
+            o.estimatedDeliveryAt = new Date(
+              readyAt + (zone?.etaMinutes ?? 15) * 60_000,
+            ).toISOString();
+        }
         if (input.to === 'cancelled' && o.status === 'out_for_delivery') {
           const c = db.customers.find((x) => x.id === rec.customerId);
           if (c && ++c.failedCodCount >= 2) c.codAllowed = false; // 2+ no-shows disable COD (§7)
@@ -319,8 +360,12 @@ export const adminHandlers = [
   }),
 
   /* ---------- Rider PWA ---------- */
+  // Active assignments, unsettled cash, and today's finished deliveries.
   route('get', '/api/rider/assignments', () => {
     const rider = requireStaff(['rider']);
+    const today = new Date(Date.now() + PKT).toISOString().slice(0, 10);
+    const isToday = (iso: string | null) =>
+      !!iso && new Date(new Date(iso).getTime() + PKT).toISOString().slice(0, 10) === today;
     return json(
       db.orders
         .filter(
@@ -328,7 +373,8 @@ export const adminHandlers = [
             o.assignment?.riderId === rider.id &&
             (o.order.status === 'ready' ||
               o.order.status === 'out_for_delivery' ||
-              !o.assignment.settled),
+              (o.assignment.cashInHand > 0 && !o.assignment.settled) ||
+              isToday(o.assignment.deliveredAt ?? o.order.completedAt)),
         )
         .map((o) => assignmentView(o, rider)),
     );
@@ -425,6 +471,14 @@ export const adminHandlers = [
     setSoldOut(item.id, input.isSoldOut, input.soldOutUntil);
     return json(item);
   }),
+  route('patch', '/api/admin/menu/modifier-groups/:id', async (info) => {
+    requireStaff(MANAGERS);
+    const group = find(db.menu.modifierGroups, (g) => g.id === param(info, 'id'), 'Group');
+    Object.assign(group, await body(info.request, C.ModifierGroupPatch));
+    db.menu.updatedAt = now();
+    save();
+    return json(group);
+  }),
   route('post', '/api/admin/menu/categories', async ({ request }) => {
     requireStaff(MANAGERS);
     const cat: C.Category = {
@@ -453,12 +507,13 @@ export const adminHandlers = [
   }),
 
   /* ---------- Settings, hours, holidays, zones ---------- */
+  // Every staff screen reads the timings (auto-reject, manager alert, pre-order release).
   route('get', '/api/admin/settings', () => {
-    requireStaff(MANAGERS);
+    requireStaff(ALL);
     return json(db.settings);
   }),
   route('patch', '/api/admin/settings', async ({ request }) => {
-    requireStaff(MANAGERS);
+    requireStaff(['owner']);
     Object.assign(db.settings, await body(request, C.StoreSettingsPatch));
     save();
     return json(db.settings);
@@ -476,7 +531,7 @@ export const adminHandlers = [
     return json(db.hours);
   }),
   route('put', '/api/admin/hours', async ({ request }) => {
-    requireStaff(MANAGERS);
+    requireStaff(['owner']);
     db.hours = (await body(request, C.HoursRequest)).hours;
     save();
     return json(db.hours);
@@ -486,7 +541,7 @@ export const adminHandlers = [
     return json(db.holidays);
   }),
   route('post', '/api/admin/holidays', async ({ request }) => {
-    requireStaff(MANAGERS);
+    requireStaff(['owner']);
     const h = await body(request, C.Holiday);
     db.holidays = [...db.holidays.filter((x) => x.date !== h.date), h].sort((a, b) =>
       a.date.localeCompare(b.date),
@@ -495,7 +550,7 @@ export const adminHandlers = [
     return json(db.holidays, 201);
   }),
   route('delete', '/api/admin/holidays/:date', (info) => {
-    requireStaff(MANAGERS);
+    requireStaff(['owner']);
     db.holidays = db.holidays.filter((x) => x.date !== param(info, 'date'));
     save();
     return json(db.holidays);
@@ -541,6 +596,39 @@ export const adminHandlers = [
         .filter((c) => !q || c.name?.toLowerCase().includes(q) || c.phone.includes(q))
         .map(adminCustomer),
     );
+  }),
+  // Manual order entry: staff typed the number, so the answer carries it in full.
+  route('get', '/api/admin/customers/lookup', ({ request }) => {
+    const staff = requireStaff(FRONT);
+    const phone = new URL(request.url).searchParams.get('phone') ?? '';
+    const c = db.customers.find((x) => x.phone === phone && !x.anonymizedAt);
+    if (!c) return fail('NOT_FOUND', 'New customer.');
+    const lookup: C.CustomerLookup = {
+      customer: {
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        isBlocked: c.isBlocked,
+        blockReason: c.blockReason,
+        codAllowed: c.codAllowed,
+        orderCount: db.orders.filter((o) => o.customerId === c.id).length,
+        addresses: c.addresses,
+      },
+      recentOrders: db.orders
+        .filter((o) => o.customerId === c.id)
+        .sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt))
+        .slice(0, 3)
+        .map((o) => toAdminOrder(o, staff)),
+    };
+    return json(lookup);
+  }),
+  route('post', '/api/admin/customers/:id/cod', async (info) => {
+    requireStaff(MANAGERS);
+    const c = findCustomer(param(info, 'id'));
+    c.codAllowed = (await body(info.request, C.CodAllowedRequest)).codAllowed;
+    if (c.codAllowed) c.failedCodCount = 0;
+    save();
+    return json(adminCustomer(c));
   }),
   route('post', '/api/admin/customers/:id/block', async (info) => {
     requireStaff(MANAGERS);
@@ -653,7 +741,14 @@ export const adminHandlers = [
   /* ---------- Riders & settlement ---------- */
   route('get', '/api/admin/riders', () => {
     requireStaff(FRONT);
-    return json(riders().map(publicStaff));
+    return json(allRiders().map(publicStaff));
+  }),
+  route('patch', '/api/admin/riders/:id', async (info) => {
+    requireStaff(MANAGERS);
+    const rider = find(allRiders(), (r) => r.id === param(info, 'id'), 'Rider');
+    rider.isActive = (await body(info.request, C.RiderPatch)).isActive;
+    save();
+    return json(publicStaff(rider));
   }),
   route('get', '/api/admin/riders/settlement', () => {
     requireStaff(MANAGERS);
@@ -688,26 +783,42 @@ export const adminHandlers = [
     const q = new URL(request.url).searchParams;
     const from = q.get('from') ?? new Date(Date.now() - 7 * 86_400_000).toISOString();
     const to = q.get('to') ?? now();
-    const done = db.orders
-      .map((r) => r.order)
-      .filter(
-        (o) =>
-          o.createdAt >= from &&
-          o.createdAt <= to &&
-          (o.status === 'delivered' || o.status === 'picked_up'),
-      );
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= new Date(from).getTime() && t <= new Date(to).getTime();
+    };
+    const all = db.orders.map((r) => r.order).filter((o) => inRange(o.createdAt));
+    const done = all.filter((o) => o.status === 'delivered' || o.status === 'picked_up');
+    const local = (iso: string) => new Date(new Date(iso).getTime() + PKT);
     const gross = done.reduce((s, o) => s + o.total, 0);
     const byDay = new Map<string, { orders: number; total: number }>();
     const items = new Map<string, { name: string; qty: number; total: number }>();
+    const cats = new Map<string, { name: string; qty: number; total: number }>();
+    const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, orders: 0 }));
     for (const o of done) {
-      const d = o.createdAt.slice(0, 10);
+      const d = local(o.createdAt).toISOString().slice(0, 10);
       const day = byDay.get(d) ?? { orders: 0, total: 0 };
       byDay.set(d, { orders: day.orders + 1, total: day.total + o.total });
+      byHour[local(o.createdAt).getUTCHours()]!.orders += 1;
       for (const l of o.lines) {
         const it = items.get(l.itemId) ?? { name: l.name.en, qty: 0, total: 0 };
         items.set(l.itemId, { ...it, qty: it.qty + l.qty, total: it.total + l.lineTotal });
+        const catId = db.menu.items.find((i) => i.id === l.itemId)?.categoryId ?? 'other';
+        const cat = cats.get(catId) ?? {
+          name: db.menu.categories.find((c) => c.id === catId)?.name.en ?? 'Other',
+          qty: 0,
+          total: 0,
+        };
+        cats.set(catId, { ...cat, qty: cat.qty + l.qty, total: cat.total + l.lineTotal });
       }
     }
+    // Orders by source per day count every order the source brought in (not only completed).
+    const sourceDay = new Map<string, number>();
+    for (const o of all) {
+      const k = `${local(o.createdAt).toISOString().slice(0, 10)}|${o.source}`;
+      sourceDay.set(k, (sourceDay.get(k) ?? 0) + 1);
+    }
+    const rejected = all.filter((o) => o.status === 'rejected');
     const group = <K extends string>(keys: readonly K[], get: (o: C.AdminOrder) => K) =>
       keys.map((k) => {
         const m = done.filter((o) => get(o) === k);
@@ -717,6 +828,29 @@ export const adminHandlers = [
       from,
       to,
       orderCount: done.length,
+      allOrders: all.length,
+      cancelledCount: all.filter((o) => o.status === 'cancelled').length,
+      rejectedCount: rejected.length,
+      autoRejectedCount: rejected.filter((o) =>
+        o.events.some((e) => e.status === 'rejected' && e.actorName === 'auto-reject job'),
+      ).length,
+      bookingsConfirmed: db.bookings.filter(
+        (b) => ['confirmed', 'completed'].includes(b.status) && inRange(`${b.date}T12:00:00+05:00`),
+      ).length,
+      byFulfilment: C.Fulfilment.options.map((f) => {
+        const m = done.filter((o) => o.fulfilment === f);
+        return { fulfilment: f, count: m.length, total: m.reduce((s, o) => s + o.total, 0) };
+      }),
+      byHour,
+      byCategory: [...cats]
+        .map(([categoryId, v]) => ({ categoryId, ...v }))
+        .sort((a, b) => b.total - a.total),
+      bySourceByDay: [...sourceDay]
+        .map(([k, count]) => {
+          const [date, source] = k.split('|') as [string, C.OrderSource];
+          return { date, source, count };
+        })
+        .sort((a, b) => a.date.localeCompare(b.date)),
       grossSales: gross,
       discounts: done.reduce((s, o) => s + o.discount, 0),
       deliveryFees: done.reduce((s, o) => s + o.deliveryFee, 0),
@@ -728,7 +862,9 @@ export const adminHandlers = [
         source: key,
         ...v,
       })),
-      byDay: [...byDay].map(([date, v]) => ({ date, ...v })),
+      byDay: [...byDay]
+        .map(([date, v]) => ({ date, ...v }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
       topItems: [...items]
         .map(([itemId, v]) => ({ itemId, ...v }))
         .sort((a, b) => b.qty - a.qty)
@@ -784,6 +920,8 @@ export const adminHandlers = [
       Omit<C.Event, 'id'>
     >,
     'event',
+    MANAGERS,
+    FRONT, // the bookings screen reads capacity
   ),
   route('delete', '/api/admin/events/:id', (info) => {
     requireStaff(MANAGERS);
@@ -793,12 +931,14 @@ export const adminHandlers = [
   }),
 
   /* ---------- Realtime (staff channel) ---------- */
+  // Each viewer gets the role-filtered order (kitchen: masked phone). The backend uses one channel
+  // per audience or id-only events + a refetch (docs/BACKEND_HANDOFF.md).
   sse('*/api/realtime/kitchen', ({ client, request }) => {
     const off = orderFeed.on(({ rec, kind }) => {
       if (kind === 'created' && !ACTIVE.includes(rec.order.status)) return;
       const event: C.KitchenEvent = {
         type: kind === 'created' ? 'order.created' : 'order.updated',
-        order: toAdminOrder(rec),
+        order: toAdminOrder(rec, sessionStaff()),
       };
       client.send({ data: JSON.stringify(event) });
     });

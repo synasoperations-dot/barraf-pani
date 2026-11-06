@@ -43,7 +43,7 @@ export function BoltRating({
               key={n}
               className={clsx(
                 'flex min-h-11 w-14 cursor-pointer flex-col items-center gap-1 rounded-chip p-1 sm:w-16',
-                'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-deep',
+                'has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-yellow has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink',
               )}
             >
               <input

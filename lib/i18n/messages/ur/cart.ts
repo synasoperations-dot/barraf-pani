@@ -18,10 +18,10 @@ const cartFlow: Messages['cartFlow'] = {
   friesTitle: 'اسے زبردست بنائیں؟', // REVIEW
   friesBody: 'فرائز کے بغیر برگر بس ایک سینڈوچ ہے۔', // REVIEW
   friesAdd: '+ {name}', // REVIEW
-  friesAddLabel: '{name} شامل کریں، {price}', // REVIEW
+  friesAddLabel: '+ {name} {price}، آرڈر میں شامل کریں', // REVIEW
   dipsTitle: 'ڈِپ چاہیے؟', // REVIEW
   dipsBody: 'ہر لقمہ ڈِپ کا حقدار ہے۔', // REVIEW
-  dipAddLabel: '{name} شامل کریں، {price}', // REVIEW
+  dipAddLabel: '+ {visible}، {name} شامل کریں', // REVIEW
   promoLabel: 'پرومو کوڈ', // REVIEW
   promoPlaceholder: 'کوڈ درج کریں', // REVIEW
   promoApply: 'لگائیں', // REVIEW

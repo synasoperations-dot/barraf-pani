@@ -4,6 +4,7 @@
  * Progression is time-based (`tick`), so it catches up after a reload.
  */
 import * as C from '@/lib/contracts';
+import { inPolygon, rankZones } from '@/lib/geo';
 import { computeTotals, effectiveMinOrder, lineTotal, promoDiscount, shortBy } from '@/lib/money';
 import { FILLET_FURY_ID, menuFixture } from './fixtures/menu';
 import {
@@ -83,6 +84,8 @@ export interface OrderRec {
   /** Scenario hook: reject this order at this time (order_rejected / auto_rejected). */
   rejectAt: number | null;
   versionConflictServed: boolean;
+  /** §9 manager alert already sent for this order. */
+  managerAlerted?: boolean;
 }
 
 interface IdemRec {
@@ -130,7 +133,7 @@ interface State {
   lastInjectedAt: number;
 }
 
-const STORAGE_KEY = 'bp-mock-db-v3';
+const STORAGE_KEY = 'bp-mock-db-v4';
 const clone = <T>(v: T): T => structuredClone(v);
 export const now = () => new Date().toISOString();
 
@@ -229,12 +232,16 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
     const before = new Map(db.orders.map((r) => [r.order.publicToken, r.order.version]));
+    const bookingsBefore = new Map(db.bookings.map((b) => [b.publicToken, b.status]));
     db = load();
     for (const rec of db.orders) {
       const v = before.get(rec.order.publicToken);
       if (v === undefined) orderFeed.emit({ rec, kind: 'created' });
       else if (v !== rec.order.version) orderFeed.emit({ rec, kind: 'updated' });
     }
+    // Staff confirmed / declined a booking in another tab: push it to this tab's status page.
+    for (const b of db.bookings)
+      if (bookingsBefore.get(b.publicToken) !== b.status) bookingFeed.emit(toBooking(b));
   });
 }
 
@@ -266,29 +273,14 @@ export function hash(s: string) {
 
 export const maskPhone = (p: string) => `${p.slice(0, 3)} ${p.slice(3, 4)}•• •••${p.slice(-4)}`;
 
-/** Ray-casting point-in-polygon on [lng, lat] rings. */
-export function inPolygon({ lat, lng }: C.GeoPoint, ring: C.LngLat[]) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i]!;
-    const [xj, yj] = ring[j]!;
-    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
+export { inPolygon };
 
 /** resolve_zone: covers → priority desc → smallest area (§4.1). */
 export function resolveZone(point: C.GeoPoint) {
   if (is('outside_zone')) return fail('OUTSIDE_ZONE', 'That pin is outside our delivery area.');
-  const area = (z: C.DeliveryZone) => {
-    const xs = z.polygon.map((p) => p[0]);
-    const ys = z.polygon.map((p) => p[1]);
-    return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
-  };
-  const zone = db.zones
-    .filter((z) => z.isActive && inPolygon(point, z.polygon))
-    .sort((a, b) => b.priority - a.priority || area(a) - area(b))[0];
-  return zone ?? fail('OUTSIDE_ZONE', 'That pin is outside our delivery area.');
+  return (
+    rankZones(point, db.zones)[0] ?? fail('OUTSIDE_ZONE', 'That pin is outside our delivery area.')
+  );
 }
 
 export const currentCustomer = () =>
@@ -568,6 +560,7 @@ export function toCustomerOrder(rec: OrderRec): C.Order {
   const {
     id: _i,
     version: _v,
+    callBack: _cb,
     customer: _c,
     rider: _r,
     acceptedAt: _a,
@@ -605,19 +598,40 @@ export function preorderReleaseAt(rec: OrderRec): number | null {
   return new Date(rec.order.scheduledFor).getTime() - db.settings.preorderReleaseMinutes * 60_000;
 }
 
-/** Staff view; the rider sees the full phone only on their active order (§7). */
+/** The logged-in staff member, if their session is usable (no pending 2FA). */
+export const sessionStaff = () =>
+  db.session.staffPending
+    ? null
+    : (db.staff.find((s) => s.id === db.session.staffId && s.isActive) ?? null);
+
+/**
+ * Staff view (§7): front of house sees the full phone (Call / WhatsApp); the rider sees it only on
+ * their active order; the kitchen (and anyone else) gets it masked.
+ */
 export function toAdminOrder(
   rec: OrderRec,
-  viewer?: { id: string; role: C.StaffRole },
+  viewer: { id: string; role: C.StaffRole } | null = null,
 ): C.AdminOrder {
   const c = db.customers.find((x) => x.id === rec.customerId);
   const riderActive =
     viewer?.role === 'rider' &&
     rec.assignment?.riderId === viewer.id &&
     rec.order.status === 'out_for_delivery';
-  const phone = c && riderActive && !c.anonymizedAt ? c.phone : rec.order.customer.phone;
+  const full = !!viewer && (C.FRONT_ROLES.includes(viewer.role) || riderActive);
+  const phone = c && full && !c.anonymizedAt ? c.phone : rec.order.customer.phone;
   return { ...rec.order, customer: { ...rec.order.customer, phone } };
 }
+
+/** §7 call-back flag: far above this customer's usual order (see AdminOrder.callBack). */
+function callBackFlag(customerId: string, total: number) {
+  const earlier = db.orders.filter((o) => o.customerId === customerId);
+  if (!earlier.length) return total >= 5000;
+  const avg = earlier.reduce((s, o) => s + o.order.total, 0) / earlier.length;
+  return total >= 2.5 * avg;
+}
+
+/** Is a staff member logged in? Then staff drive orders and the mock timer only does system jobs. */
+const staffDriven = () => sessionStaff() !== null;
 
 export function setSoldOut(itemId: string, isSoldOut: boolean, soldOutUntil: string | null = null) {
   const item = db.menu.items.find((i) => i.id === itemId);
@@ -703,7 +717,48 @@ function advancePayment(rec: OrderRec) {
       (l) => !db.menu.items.find((i) => i.id === l.itemId)?.isSoldOut,
     );
     if (available) markPaid();
+    else if (!db.refunds.some((r) => r.orderToken === rec.order.publicToken)) {
+      // Otherwise: paid but can't cook it → refund row (`requested`) + refund.requested job.
+      p.status = 'paid';
+      rec.order.paymentStatus = 'paid';
+      db.refunds.unshift({
+        id: `ref_${randomToken().slice(0, 10)}`,
+        orderNumber: rec.order.number,
+        orderToken: rec.order.publicToken,
+        provider: rec.order.paymentMethod,
+        amount: rec.order.total,
+        paidAmount: rec.order.total,
+        reason: 'Late payment after expiry; items no longer available',
+        status: 'requested',
+        requestedBy: 'system',
+        processedBy: null,
+        processedAt: null,
+        createdAt: now(),
+      });
+      addOutbox('refund.requested', `refund:${rec.order.number}:late`);
+      save();
+    }
   }
+}
+
+/**
+ * §9 every minute: manager alert at `manager_alert_minutes` unaccepted, auto-reject at
+ * `auto_reject_minutes`, counted from `released_at` for pre-orders (unreleased ones never get here).
+ * Returns true when the order was rejected.
+ */
+function autoRejectJob(rec: OrderRec) {
+  const since = new Date(rec.order.releasedAt ?? rec.order.createdAt).getTime();
+  const age = Date.now() - since;
+  if (!rec.managerAlerted && age >= db.settings.managerAlertMinutes * 60_000) {
+    rec.managerAlerted = true;
+    addOutbox('whatsapp.manager_alert', `order:${rec.order.number}:manager_alert`);
+    save();
+  }
+  if (age < db.settings.autoRejectMinutes * 60_000) return false;
+  rec.autoAdvance = false;
+  rec.order.cancelReason = 'Auto-rejected: not accepted in time';
+  transition(rec, 'rejected', 'system', 'auto-reject job', rec.order.cancelReason);
+  return true;
 }
 
 /** Advance timers. Called on every request and once a second by the worker bootstrap. */
@@ -725,15 +780,17 @@ export function tick() {
       );
       continue;
     }
-    if (!rec.autoAdvance || rec.rejectAt) continue;
-    // §9: pre-orders wait until their release time, then the normal flow starts.
+    // §9: pre-orders wait until their release time (system job, runs whoever drives the order).
     const releaseAt = preorderReleaseAt(rec);
     if (releaseAt !== null && !rec.order.releasedAt) {
       if (Date.now() < releaseAt) continue;
       rec.order.releasedAt = now();
       rec.lastChangeAt = Date.now();
       save();
+      orderFeed.emit({ rec, kind: 'updated' });
     }
+    if (rec.order.status === 'placed' && autoRejectJob(rec)) continue;
+    if (!rec.autoAdvance || rec.rejectAt || staffDriven()) continue;
     for (
       let next = FLOW[rec.order.fulfilment][rec.order.status];
       next;
@@ -839,6 +896,7 @@ export function newOrder(
         phone: maskPhone(customer.phone),
         orderCount: prior + 1,
       },
+      callBack: input.paymentMethod === 'cod' && callBackFlag(customer.id, quote.total),
       rider: null,
       acceptedAt: null,
       readyAt: null,
@@ -1197,5 +1255,270 @@ export function seedAccountDemo(c: CustomerRec) {
     }
   }
   setSoldOut(FILLET_FURY_ID, true);
+  save();
+}
+
+/* ------------------------------------------------------------------ */
+/* admin_demo: two weeks of history + live orders, bookings, a refund  */
+/* ------------------------------------------------------------------ */
+
+/** Deterministic PRNG so the demo looks the same after every reset. */
+function prng(seed: number) {
+  return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+}
+
+interface DemoOrder {
+  at: number;
+  status: C.OrderStatus;
+  source?: C.OrderSource;
+  fulfilment?: C.Fulfilment;
+  paymentMethod?: C.PaymentMethod;
+  qty?: number;
+  scheduledFor?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Seeds the first time a staff member logs in under `admin_demo`: ~80 finished orders over 14
+ * days from every source, a live board (one order past the 6-minute manager alert, one big order
+ * with the call-back flag), a scheduled pre-order, a rider holding cash, bookings, a refund.
+ */
+export function seedAdminDemo() {
+  if (db.orders.some((o) => o.order.events.some((e) => e.actorName === 'demo seed'))) return;
+  const rand = prng(1042);
+  const pick = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)]!;
+  const items = db.menu.items.filter((i) => i.isActive && !i.isSoldOut && i.basePrice >= 300);
+  const sources: C.OrderSource[] = [
+    'website',
+    'website',
+    'website',
+    'whatsapp',
+    'whatsapp',
+    'phone',
+    'walk_in',
+    'foodpanda',
+  ];
+  const names = ['Ali', 'Ayesha', 'Bilal', 'Fatima', 'Hamza', 'Hira', 'Usman', 'Zara'];
+  const customers = names.map((n, i) => {
+    const c = upsertCustomer(`+92301${String(2000000 + i * 7919).slice(-7)}`, `${n} (demo)`);
+    c.phoneVerifiedAt ??= now();
+    if (!c.addresses.length)
+      c.addresses.push({
+        id: `adr_demo_${i}`,
+        label: 'home',
+        line1: `House ${10 + i}, Street ${i + 2}`,
+        area: 'Paradise City',
+        landmark: i % 2 ? 'Near the water tank' : null,
+        location: { lat: 31.26 + i * 0.002, lng: 72.31 + i * 0.002 },
+        isDefault: true,
+      });
+    return c;
+  });
+  const rider = db.staff.find((s) => s.role === 'rider')!;
+
+  const make = (opts: DemoOrder) => {
+    const customer = pick(customers);
+    const fulfilment = opts.fulfilment ?? (rand() < 0.55 ? 'delivery' : 'pickup');
+    const lines: C.CartLine[] = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => {
+      const it = pick(items);
+      const qty = opts.qty ?? 1 + Math.floor(rand() * 2);
+      return { itemId: it.id, variantId: it.variants[0]!.id, modifierIds: [], qty, note: null };
+    });
+    const address = fulfilment === 'delivery' ? customer.addresses[0]! : null;
+    let priced: PricedCart;
+    try {
+      priced = priceCart(
+        {
+          lines,
+          fulfilment,
+          location: address?.location ?? null,
+          promoCode: null,
+          scheduledFor: opts.scheduledFor ?? null,
+          tip: 0,
+        },
+        customer,
+      );
+    } catch {
+      return null;
+    }
+    const rec = newOrder(
+      {
+        lines,
+        fulfilment,
+        paymentMethod: opts.paymentMethod ?? 'cod',
+        scheduledFor: opts.scheduledFor ?? null,
+        customerNote: opts.note ?? null,
+        whatsappOptIn: false,
+        source: opts.source ?? pick(sources),
+      },
+      priced,
+      customer,
+      address,
+    );
+    const at = new Date(opts.at).toISOString();
+    const o = rec.order;
+    rec.autoAdvance = false;
+    rec.rejectAt = null;
+    rec.lastChangeAt = opts.at;
+    o.createdAt = at;
+    o.status = opts.status;
+    o.canCancel = opts.status === 'placed';
+    o.events = [
+      { status: opts.status, at, note: null, actorType: 'system', actorName: 'demo seed' },
+    ];
+    if (opts.status === 'delivered' || opts.status === 'picked_up') {
+      o.completedAt = new Date(opts.at + 35 * 60_000).toISOString();
+      o.paymentStatus = 'paid';
+      if (o.paymentMethod === 'cod') o.cashCollectedAt = o.completedAt;
+    }
+    if (opts.status === 'rejected') o.cancelReason = 'Kitchen too busy (demo)';
+    if (opts.status === 'cancelled') o.cancelReason = 'Customer changed their mind (demo)';
+    return rec;
+  };
+
+  // History: 14 days, 4–8 orders a day between 12:00 and 00:30 PKT.
+  const day = 86_400_000;
+  const midnight = Math.floor((Date.now() + PKT) / day) * day - PKT;
+  for (let d = 14; d >= 1; d--) {
+    const n = 4 + Math.floor(rand() * 4) + (d < 7 ? 1 : 0); // the website grows in week 2
+    for (let k = 0; k < n; k++) {
+      const roll = rand();
+      const status: C.OrderStatus =
+        roll < 0.06 ? 'cancelled' : roll < 0.1 ? 'rejected' : 'delivered';
+      const rec = make({ at: midnight - d * day + (12 + rand() * 12.5) * 3_600_000, status });
+      if (!rec) continue;
+      if (status === 'delivered' && rec.order.fulfilment === 'pickup')
+        rec.order.status = 'picked_up';
+      if (status === 'rejected' && k === 0) {
+        rec.order.events[0] = { ...rec.order.events[0]!, actorName: 'auto-reject job' };
+        rec.order.cancelReason = 'Auto-rejected: not accepted in time';
+      }
+    }
+  }
+
+  const t = Date.now();
+  // Live board.
+  make({
+    at: t - 6.5 * 60_000,
+    status: 'placed',
+    source: 'whatsapp',
+    note: 'Ring twice. Extra ketchup.',
+  });
+  make({ at: t - 90_000, status: 'placed', source: 'website', qty: 6 });
+  const accepted = make({ at: t - 9 * 60_000, status: 'accepted', source: 'phone' });
+  if (accepted) {
+    accepted.order.acceptedAt = new Date(t - 8 * 60_000).toISOString();
+    accepted.order.estimatedReadyAt = new Date(t + 7 * 60_000).toISOString();
+  }
+  make({ at: t - 14 * 60_000, status: 'preparing', source: 'walk_in', fulfilment: 'pickup' });
+  const assign = (rec: OrderRec | null, delivered: boolean) => {
+    if (!rec) return;
+    rec.order.rider = { id: rider.id, name: rider.name };
+    rec.assignment = {
+      riderId: rider.id,
+      assignedAt: rec.order.createdAt,
+      pickedUpAt: delivered ? rec.order.createdAt : null,
+      deliveredAt: delivered ? rec.order.completedAt : null,
+      cashInHand: delivered ? rec.order.total : 0,
+      settled: false,
+    };
+  };
+  assign(make({ at: t - 22 * 60_000, status: 'ready', fulfilment: 'delivery' }), false);
+  // The rider is still holding cash from an earlier delivery today.
+  assign(
+    make({ at: t - 70 * 60_000, status: 'delivered', fulfilment: 'delivery', source: 'whatsapp' }),
+    true,
+  );
+  // A pre-order for tomorrow 20:00 PKT, and an online order still waiting for payment.
+  make({
+    at: t - 30 * 60_000,
+    status: 'placed',
+    source: 'website',
+    fulfilment: 'pickup',
+    scheduledFor: new Date(midnight + day + 20 * 3_600_000).toISOString(),
+  });
+  make({ at: t - 2 * 60_000, status: 'pending_payment', paymentMethod: 'easypaisa' });
+  const paid = make({
+    at: t - 50 * 60_000,
+    status: 'picked_up',
+    fulfilment: 'pickup',
+    paymentMethod: 'jazzcash',
+  });
+  if (paid)
+    db.refunds.unshift({
+      id: 'ref_demo',
+      orderNumber: paid.order.number,
+      orderToken: paid.order.publicToken,
+      provider: 'jazzcash',
+      amount: Math.min(400, paid.order.total),
+      paidAmount: paid.order.total,
+      reason: 'Fries arrived cold (demo)',
+      status: 'requested',
+      requestedBy: 'Manager (mock)',
+      processedBy: null,
+      processedAt: null,
+      createdAt: now(),
+    });
+
+  // Tonight's event (capacity 30) and bookings: one request would take it over capacity.
+  if (!db.events.some((e) => e.id === 'event_demo'))
+    db.events.push({
+      id: 'event_demo',
+      title: { en: 'DEMO Match night', ur: null },
+      description: null,
+      imagePath: null,
+      startsAt: new Date(midnight + 20 * 3_600_000).toISOString(),
+      endsAt: new Date(midnight + 23 * 3_600_000).toISOString(),
+      bookable: true,
+      capacity: 30,
+      spotsLeft: 30,
+      isActive: true,
+    });
+  const today = localToday();
+  const booking = (b: Partial<BookingRec>) =>
+    db.bookings.unshift({
+      publicToken: randomToken(),
+      type: 'table',
+      eventId: null,
+      date: today,
+      time: '20:00',
+      guests: 4,
+      name: 'Demo guest',
+      phone: '+923001112223',
+      note: null,
+      status: 'requested',
+      declineReason: null,
+      createdAt: now(),
+      resolveAt: null,
+      ...b,
+    });
+  booking({
+    name: 'Usman (demo)',
+    type: 'event',
+    eventId: 'event_demo',
+    guests: 20,
+    status: 'confirmed',
+  });
+  booking({ name: 'Saad (demo)', guests: 2, time: '19:30', status: 'confirmed' });
+  booking({
+    name: 'Hira (demo)',
+    type: 'private_event',
+    guests: 40,
+    date: new Date(midnight + 10 * day + PKT).toISOString().slice(0, 10),
+    time: '19:00',
+    note: 'Office dinner',
+  });
+  booking({ name: 'Bilal (demo)', type: 'event', eventId: 'event_demo', guests: 12 });
+  booking({ name: 'Ayesha (demo)', guests: 6, time: '21:00', note: 'Birthday, bringing a cake' });
+  db.outbox.unshift({
+    id: 'obx_demo_failed',
+    topic: 'sms.order_placed',
+    dedupKey: 'order:demo:sms',
+    status: 'failed',
+    attempts: 2,
+    nextAttemptAt: new Date(t + 60_000).toISOString(),
+    lastError: 'Gateway timeout (mock)',
+    createdAt: now(),
+  });
   save();
 }

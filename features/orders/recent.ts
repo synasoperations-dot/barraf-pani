@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { browserStorage } from '@/stores/cart';
 
 /**
  * Orders placed on this device: public tokens only (no names, phones or numbers), for
@@ -31,7 +32,7 @@ export const useRecentOrders = create<RecentOrdersState>()(
     // Rehydrated in Providers after mount, like the cart.
     {
       name: 'bp-recent-orders-v1',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(browserStorage),
       version: 1,
       skipHydration: true,
     },

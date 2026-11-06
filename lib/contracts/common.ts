@@ -138,6 +138,12 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
  */
 export const MOCK_SESSION_COOKIE = 'bp_mock_session';
 
+/**
+ * Mock-only staff marker (value = role) so proxy.ts can guard /admin in dev. The real backend
+ * reads the role from the Supabase session JWT (`app_metadata.staff_role`, see BACKEND_HANDOFF.md).
+ */
+export const MOCK_STAFF_COOKIE = 'bp_mock_staff';
+
 /** Header names shared by client, mocks and backend. */
 export const HEADERS = {
   idempotencyKey: 'Idempotency-Key',

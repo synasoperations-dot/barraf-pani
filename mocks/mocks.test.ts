@@ -3,7 +3,7 @@
  * MSW handlers in Node. Time-based steps are fast-forwarded instead of waited for.
  */
 import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
+import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { setupServer } from 'msw/node';
 import { api, ApiError, newIdempotencyKey, setTurnstileProvider } from '@/lib/api';
 import type { CartLine, Menu, PlaceOrderRequest } from '@/lib/contracts';
@@ -82,13 +82,13 @@ function fastForward(steps: number) {
   }
 }
 
-before(async () => {
+beforeAll(async () => {
   server.listen({ onUnhandledFrame: 'error' });
   setTurnstileProvider(async () => 'test-turnstile-token');
   resetDb();
   menu = await api.menu();
 });
-after(() => server.close());
+afterAll(() => server.close());
 beforeEach(() => {
   resetDb();
   setScenario('happy');
@@ -495,7 +495,11 @@ describe('admin', () => {
       'enrol_2fa',
     );
     await login('kitchen@barrafpaani.test');
-    assert.equal(await code(api.admin.settings()), 'FORBIDDEN');
+    assert.equal(await code(api.admin.settings()), 'OK'); // every screen reads the timings
+    assert.equal(await code(api.admin.updateSettings({ minOrderValue: 1 })), 'FORBIDDEN');
+    assert.equal(await code(api.admin.promos()), 'FORBIDDEN');
+    await login('manager@barrafpaani.test');
+    assert.equal(await code(api.admin.updateSettings({ minOrderValue: 1 })), 'FORBIDDEN'); // owner only
   });
 
   it('manual WhatsApp order goes through the same rules and returns a tracking token', async () => {
@@ -607,6 +611,178 @@ describe('admin', () => {
     assert.deepEqual(
       new Set(db.orders.map((o) => o.order.source)),
       new Set(['whatsapp', 'phone', 'website']),
+    );
+  });
+});
+
+describe('staff apps (prompt 4)', () => {
+  async function login(email: string) {
+    const { next } = await api.admin.login({ email, password: 'barraf123' });
+    if (next === 'enrol_2fa') await api.admin.enrol2fa();
+    if (next !== 'ok') await api.admin.verify2fa({ code: '123456' });
+  }
+  const placeAsCustomer = async (over = {}) => {
+    await verify();
+    return (await api.placeOrder(order(over), newIdempotencyKey())).order;
+  };
+
+  it('front of house sees full phones; the kitchen sees them masked (§7)', async () => {
+    await placeAsCustomer();
+    await login('cashier@barrafpaani.test');
+    assert.equal((await api.admin.orders())[0]!.customer.phone, PHONE);
+    await login('kitchen@barrafpaani.test');
+    assert.match((await api.admin.orders())[0]!.customer.phone, /•/);
+  });
+
+  it('staff-driven: the timer stops, auto-reject fires at 8 min, manager alert at 6', async () => {
+    await placeAsCustomer();
+    await login('cashier@barrafpaani.test');
+    const rec = db.orders[0]!;
+    fastForward(3);
+    assert.equal(rec.order.status, 'placed', 'no auto-accept while staff are logged in');
+    rec.order.createdAt = new Date(Date.now() - 6.5 * 60_000).toISOString();
+    tick();
+    assert.ok(db.outbox.some((o) => o.topic === 'whatsapp.manager_alert'));
+    assert.equal(rec.order.status, 'placed');
+    rec.order.createdAt = new Date(Date.now() - 8 * 60_000).toISOString();
+    tick();
+    assert.equal(rec.order.status, 'rejected');
+    assert.equal(rec.order.events.at(-1)!.actorType, 'system');
+  });
+
+  it('accept with a prep time sets the ETA; reject needs a reason; roles are enforced', async () => {
+    await placeAsCustomer();
+    await login('kitchen@barrafpaani.test');
+    const [o] = await api.admin.orders({ status: ['placed'] });
+    assert.equal(
+      await code(
+        api.admin.transition(
+          o!.id,
+          { to: 'rejected', version: o!.version, note: null },
+          newIdempotencyKey(),
+        ),
+      ),
+      'VALIDATION_FAILED',
+    );
+    const before = Date.now();
+    const acc = await api.admin.transition(
+      o!.id,
+      { to: 'accepted', version: o!.version, note: null, prepMinutes: 10 },
+      newIdempotencyKey(),
+    );
+    const eta = new Date(acc.estimatedReadyAt!).getTime() - before;
+    assert.ok(eta >= 9.9 * 60_000 && eta <= 10.1 * 60_000);
+    // Kitchen can't cancel; cancelling from accepted is manager-only.
+    assert.equal(
+      await code(
+        api.admin.transition(
+          o!.id,
+          { to: 'cancelled', version: acc.version, note: 'x' },
+          newIdempotencyKey(),
+        ),
+      ),
+      'FORBIDDEN',
+    );
+    await login('cashier@barrafpaani.test');
+    assert.equal(
+      await code(
+        api.admin.transition(
+          o!.id,
+          { to: 'cancelled', version: acc.version, note: 'x' },
+          newIdempotencyKey(),
+        ),
+      ),
+      'FORBIDDEN',
+    );
+    // Same status again is a harmless no-op.
+    assert.equal(
+      (
+        await api.admin.transition(
+          o!.id,
+          { to: 'accepted', version: acc.version, note: null },
+          newIdempotencyKey(),
+        )
+      ).version,
+      acc.version,
+    );
+  });
+
+  it('customer lookup + manual order + search by BP number or phone', async () => {
+    await placeAsCustomer();
+    await login('cashier@barrafpaani.test');
+    const found = await api.admin.customerLookup(PHONE);
+    assert.equal(found.customer.phone, PHONE);
+    assert.equal(found.recentOrders.length, 1);
+    assert.equal(await code(api.admin.customerLookup('+923339999999')), 'NOT_FOUND');
+    const number = found.recentOrders[0]!.number;
+    assert.equal((await api.admin.orders({ q: number.slice(3) }))[0]!.number, number);
+    assert.equal((await api.admin.orders({ q: '0300 1234567' }))[0]!.number, number);
+    assert.equal((await api.admin.orders({ q: '9999' })).length, 0);
+  });
+
+  it('call-back flag on an order far above the usual size', async () => {
+    await placeAsCustomer(); // 2 × Crunch Kick
+    await api.placeOrder(order({ lines: [line('Crunch Kick', 12)] }), newIdempotencyKey());
+    await login('owner@barrafpaani.test');
+    const [big, first] = await api.admin.orders();
+    assert.equal(big!.callBack, true);
+    assert.equal(first!.callBack, false);
+  });
+
+  it('late payment with sold-out items lands in the refunds queue', async () => {
+    scenario('late_payment_success');
+    const o = await placeAsCustomer({ paymentMethod: 'jazzcash' });
+    await api.initiatePayment('jazzcash', { orderToken: o.publicToken }, newIdempotencyKey());
+    const rec = db.orders[0]!;
+    rec.payment!.expiresAt = Date.now() - 1;
+    tick();
+    assert.equal(rec.order.status, 'expired');
+    db.menu.items.find((i) => i.id === rec.order.lines[0]!.itemId)!.isSoldOut = true;
+    rec.payment!.startedAt -= 60_000;
+    tick();
+    await login('owner@barrafpaani.test');
+    const [r] = await api.admin.refunds();
+    assert.equal(r!.orderToken, o.publicToken);
+    assert.equal(r!.status, 'requested');
+  });
+
+  it('admin_demo seeds history; the report has every breakdown the dashboard draws', async () => {
+    scenario('admin_demo');
+    await login('owner@barrafpaani.test');
+    const from = new Date(Date.now() - 15 * 86_400_000).toISOString();
+    const r = await api.admin.salesReport(from, new Date().toISOString());
+    assert.ok(r.orderCount > 40);
+    assert.ok(r.allOrders >= r.orderCount + r.cancelledCount + r.rejectedCount);
+    assert.ok(r.autoRejectedCount >= 1);
+    assert.equal(r.byHour.length, 24);
+    assert.ok(r.bySource.find((s) => s.source === 'whatsapp')!.count > 0);
+    assert.ok(r.bySourceByDay.length > 0);
+    assert.equal(
+      r.byFulfilment.reduce((s, f) => s + f.count, 0),
+      r.orderCount,
+    );
+    assert.ok((await api.admin.bookings(['requested'])).length >= 2);
+    assert.ok((await api.admin.settlement())[0]!.openCash > 0);
+    // Seeding twice is a no-op.
+    const n = db.orders.length;
+    await login('owner@barrafpaani.test');
+    assert.equal(db.orders.length, n);
+  });
+
+  it('rider toggle, COD toggle, modifier group limits', async () => {
+    await placeAsCustomer();
+    await login('owner@barrafpaani.test');
+    assert.equal((await api.admin.updateRider('staff_rider', { isActive: false })).isActive, false);
+    const [c] = await api.admin.customers();
+    assert.equal((await api.admin.setCustomerCod(c!.id, { codAllowed: false })).codAllowed, false);
+    const g = db.menu.modifierGroups[0]!;
+    assert.equal(
+      await code(api.admin.updateModifierGroup(g.id, { minSelect: 3, maxSelect: 1 })),
+      'VALIDATION_FAILED',
+    );
+    assert.equal(
+      (await api.admin.updateModifierGroup(g.id, { minSelect: 0, maxSelect: 2 })).maxSelect,
+      2,
     );
   });
 });

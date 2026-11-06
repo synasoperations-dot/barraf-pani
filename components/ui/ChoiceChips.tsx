@@ -49,7 +49,7 @@ export function ChoiceChips<T extends string>({
             key={o.value}
             className={clsx(
               'flex min-h-11 shrink-0 snap-start flex-col items-center justify-center rounded-chip border-2 border-ink px-3 py-1 text-center leading-tight transition-[background-color,box-shadow]',
-              'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-deep',
+              'has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-yellow has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink',
               o.disabled
                 ? 'cursor-not-allowed bg-paper text-muted line-through'
                 : o.value === value

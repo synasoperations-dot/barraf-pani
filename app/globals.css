@@ -88,13 +88,49 @@
   :lang(ur) :is(.leading-none, .leading-tight, .leading-6, .leading-snug) {
     line-height: 1.6;
   }
+  /*
+   * Focus: a yellow band with an ink outline around it, visible on paper, blue, orange and ink.
+   * The band goes through Tailwind's ring variable so elements with a hard shadow keep it.
+   */
   :focus-visible {
-    outline: 3px solid var(--color-blue-deep);
-    outline-offset: 3px;
+    outline: 3px solid var(--color-ink);
+    outline-offset: 4px;
+    --tw-ring-shadow: 0 0 0 4px var(--color-yellow);
+    box-shadow: 0 0 0 4px var(--color-yellow);
+  }
+  /* On ink surfaces (kitchen board, footer, cart bar) the outline flips to white. */
+  .bg-ink :focus-visible,
+  .bg-ink:focus-visible {
+    outline-color: var(--color-white);
   }
   ::selection {
     background: var(--color-yellow);
     color: var(--color-ink);
+  }
+}
+
+/* ---------- Print: KOT (80mm thermal), receipt, tonight's bookings ---------- */
+
+/* usePrint() in components/admin/kit.tsx renders the ticket into #print-root, then calls print(). */
+#print-root {
+  display: none;
+}
+@page kot {
+  size: 80mm auto;
+  margin: 3mm;
+}
+@media print {
+  body:has(#print-root:not(:empty)) > :not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    display: block;
+    color: var(--color-ink);
+    background: var(--color-white);
+  }
+  .print-kot {
+    page: kot;
+    width: 74mm;
   }
 }
 

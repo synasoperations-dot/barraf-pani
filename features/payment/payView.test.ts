@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { payView, STUCK_AFTER_MS } from './payView';
 
 const fresh = { seenExpired: false, pendingMs: 0 };

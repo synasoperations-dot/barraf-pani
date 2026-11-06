@@ -55,13 +55,14 @@ export function PriceChip({
         selected
           ? 'border-ink bg-yellow text-ink shadow-hard-sm'
           : tone === 'panel'
-            ? 'border-white text-white'
+            ? 'border-white bg-ink/35 text-white'
             : 'border-ink bg-white text-ink',
         className,
       )}
       {...rest}
     >
-      {label && <span className="text-xl opacity-90">{label}</span>}
+      {label && <span className="text-xl">{label}</span>}
+      {label && ' '}
       <span>{formatAmount(price)}</span>
     </button>
   );

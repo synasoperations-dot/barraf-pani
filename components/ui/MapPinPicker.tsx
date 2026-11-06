@@ -26,7 +26,7 @@ const round = (n: number) => Math.round(n * 1e5) / 1e5;
 
 /**
  * Placeholder implementation: "use my location" + manual coordinates on a sticker-style
- * grid-paper board with a pin. TODO: real map (Google Maps / Mapbox) per §10.
+ * grid-paper board with a pin. TODO(backend phase, docs/OPEN_QUESTIONS.md): real Google Maps / Mapbox map, §10.
  */
 export function MapPinPicker({
   value,

@@ -48,7 +48,7 @@ export function FriesNudge({ item, onAdd }: { item: NudgeItem; onAdd: (el: HTMLE
       >
         <span className="font-price text-2xl tracking-[0.02em] uppercase">
           {t('friesAdd', { name: item.name })}
-        </span>
+        </span>{' '}
         <span className="font-price text-2xl tracking-[0.02em]">{price}</span>
       </button>
     </div>
@@ -64,7 +64,6 @@ export function DipsCarousel({
   onAdd: (id: string, el: HTMLElement) => void;
 }) {
   const t = useTranslations('cartFlow');
-  const tp = useTranslations('price');
   const id = useId();
   if (dips.length === 0) return null;
   return (
@@ -94,10 +93,7 @@ export function DipsCarousel({
               tone="paper"
               label="+"
               price={d.price}
-              aria-label={t('dipAddLabel', {
-                name: d.name,
-                price: tp('rs', { amount: formatAmount(d.price) }),
-              })}
+              aria-label={t('dipAddLabel', { name: d.name, visible: formatAmount(d.price) })}
               onClick={(e) => onAdd(d.id, e.currentTarget)}
             />
           </li>

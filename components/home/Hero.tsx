@@ -100,7 +100,10 @@ export function HeroView({ status, featured, cartHasItems, photoRef }: HeroViewP
           <div className="flex flex-wrap gap-4">
             <Link
               href={cta.href}
-              className={buttonClasses({ size: 'lg', className: 'max-sm:px-5 max-sm:text-xl' })}
+              className={buttonClasses({
+                size: 'lg',
+                className: 'max-sm:px-5 max-sm:text-xl max-sm:text-ink',
+              })}
             >
               {cta.label}
             </Link>

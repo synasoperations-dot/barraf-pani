@@ -185,7 +185,8 @@ function ItemChip({
   const variantLabel = useVariantLabel();
 
   const name = localized(item.name, locale);
-  const price = t('price.rs', { amount: formatAmount(variant.price) });
+  // What the chip shows: its label, then the price (label-in-name, WCAG 2.5.3).
+  const visible = [label, formatAmount(variant.price)].filter(Boolean).join(' ');
   const choose = hasRequiredChoice(menu, item);
   const full = variantLabel(variant);
   const out = item.isSoldOut || !variant.isAvailable;
@@ -199,12 +200,12 @@ function ItemChip({
       disabled={out || closed}
       aria-label={
         out
-          ? t('menuPage.soldOutItem', { name })
+          ? t('menuPage.soldOutItem', { name, visible })
           : choose
-            ? t('menuPage.chooseItem', { name, price })
+            ? t('menuPage.chooseItem', { name, visible })
             : full
-              ? t('menuPage.addVariant', { name, variant: full, price })
-              : t('menuPage.addItem', { name, price })
+              ? t('menuPage.addVariant', { name, variant: full, visible })
+              : t('menuPage.addItem', { name, visible })
       }
       onClick={(e) =>
         choose
@@ -593,7 +594,7 @@ export function MenuBoards({ view }: { view: MenuView }) {
   const extra = topCategories(view.menu).filter((c) => !KNOWN.has(c.slug) && shows(view, c.slug));
   return (
     <ViewCtx value={view}>
-      <div className="grid items-start gap-8 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
         {BOARDS.filter((b) => b.slugs.some((s) => shows(view, s))).map((b) => (
           <div key={b.slugs[0]}>{b.board}</div>
         ))}
@@ -609,7 +610,7 @@ export function MenuBoards({ view }: { view: MenuView }) {
 export function MenuSkeleton() {
   const t = useTranslations('common');
   return (
-    <div role="status" className="grid items-start gap-8 lg:grid-cols-2">
+    <div role="status" className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
       <span className="sr-only">{t('loading')}</span>
       {[0, 1, 2, 3].map((i) => (
         <MenuBoard key={i}>

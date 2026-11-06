@@ -15,10 +15,10 @@ const menuPage: Messages['menuPage'] = {
   clearSearch: 'تلاش صاف کریں', // REVIEW
   categories: 'مینو کی اقسام', // REVIEW
   soldOutToday: 'آج ختم', // REVIEW
-  addItem: '{name} شامل کریں، {price}', // REVIEW
-  addVariant: '{name} شامل کریں، {variant}، {price}', // REVIEW
-  chooseItem: '{name} کے آپشن منتخب کریں، {price}', // REVIEW
-  soldOutItem: '{name}، آج ختم', // REVIEW
+  addItem: '{visible}، {name} شامل کریں', // REVIEW
+  addVariant: '{visible}، {name} ({variant}) شامل کریں', // REVIEW
+  chooseItem: '{visible}، {name} کے آپشن منتخب کریں', // REVIEW
+  soldOutItem: '{visible}، {name} آج ختم', // REVIEW
   notOffered: 'سائز {size} میں دستیاب نہیں', // REVIEW
   sizes: 'سائز', // REVIEW
   optionShort: { optionA: 'A', optionB: 'B' }, // REVIEW

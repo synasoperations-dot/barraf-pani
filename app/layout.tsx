@@ -49,6 +49,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <NextIntlClientProvider timeZone="Asia/Karachi">
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
+        {/* Staff printing (KOT, receipts, tonight's bookings) portals into this; see globals.css. */}
+        <div id="print-root" />
       </body>
     </html>
   );

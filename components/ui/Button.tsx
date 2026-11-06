@@ -5,8 +5,8 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'dark' | 'whatsa
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  // White on orange only at display sizes (md/lg); sm switches to ink below.
-  primary: 'bg-orange text-white shadow-hard',
+  // White on orange is ~3:1, so only at lg (24px display = WCAG large text). sm/md use ink (6:1).
+  primary: 'bg-orange shadow-hard',
   secondary: 'bg-yellow text-ink shadow-hard',
   ghost: 'bg-white text-ink shadow-hard',
   dark: 'bg-ink text-white shadow-hard-orange',
@@ -33,7 +33,7 @@ export function buttonClasses({
     'aria-disabled:pointer-events-none aria-disabled:bg-grid-line aria-disabled:text-muted aria-disabled:shadow-none',
     VARIANTS[variant],
     SIZES[size],
-    variant === 'primary' && size === 'sm' && 'text-ink',
+    variant === 'primary' && (size === 'lg' ? 'text-white' : 'text-ink'),
     block && 'w-full',
     className,
   );

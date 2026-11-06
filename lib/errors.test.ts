@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { ErrorCode } from '@/lib/contracts';
 import { ApiError } from '@/lib/api';
 import { errorCopy } from './errors';

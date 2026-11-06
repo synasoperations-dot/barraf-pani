@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { z } from 'zod';
 import { menuFixture } from '@/mocks/fixtures/menu';
 import { demoEvents } from '@/mocks/fixtures/deals';

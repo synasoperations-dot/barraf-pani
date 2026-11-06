@@ -231,7 +231,7 @@ export function RadioCards<T extends string>({
             key={o.value}
             className={clsx(
               'flex cursor-pointer items-center gap-3 rounded-input border-3 border-ink p-4 transition-[background-color,box-shadow,translate]',
-              'has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue-deep',
+              'has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-yellow has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink',
               o.disabled && 'cursor-not-allowed bg-paper text-muted',
               !o.disabled &&
                 (o.value === value

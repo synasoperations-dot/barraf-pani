@@ -1,6 +1,34 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { MOCK_SESSION_COOKIE } from '@/lib/contracts/common';
+import { canOpen, isAdminSection, ROLE_HOME, sectionOf } from '@/lib/admin-access';
+import { MOCK_SESSION_COOKIE, MOCK_STAFF_COOKIE } from '@/lib/contracts/common';
+import type { StaffRole } from '@/lib/contracts';
 import { LOCALE_COOKIE } from '@/lib/i18n/config';
+
+const ROLES: readonly StaffRole[] = ['owner', 'manager', 'kitchen', 'cashier', 'rider'];
+
+/**
+ * Staff role from the session. Mocks: the `bp_mock_staff` marker. Backend phase: verify the
+ * Supabase session JWT and read `app_metadata.staff_role` (see docs/BACKEND_HANDOFF.md).
+ */
+function staffRole(req: NextRequest): StaffRole | null {
+  const v = req.cookies.get(MOCK_STAFF_COOKIE)?.value;
+  return ROLES.find((r) => r === v) ?? null;
+}
+
+/** /admin: login required, then a role check per section (§7). */
+function guardAdmin(req: NextRequest, pathname: string) {
+  const section = sectionOf(pathname);
+  if (section === 'login') return null;
+  const role = staffRole(req);
+  if (!role) {
+    const login = new URL('/admin/login', req.url);
+    if (pathname !== '/admin') login.searchParams.set('next', pathname);
+    return NextResponse.redirect(login);
+  }
+  if (!section || !isAdminSection(section) || !canOpen(role, section))
+    return NextResponse.redirect(new URL(ROLE_HOME[role], req.url));
+  return null;
+}
 
 /** Customer pages that need a phone-OTP session (§2.1). Guest checkout stays open. */
 const PROTECTED = /^\/account(\/|$)/;
@@ -17,12 +45,18 @@ const hasSession = (req: NextRequest) =>
  * 2. `?lang=ur|en` → that locale for this request + remembered in the cookie. These are the
  *    hreflang alternate URLs, so crawlers can fetch the Urdu version without a cookie.
  * 3. /account/* without a session → /login?next=<where they were going>.
- * The session check here is only a redirect hint; every /api/me* call is still authorised by the server.
+ * 4. /admin/* without a staff session → /admin/login; a section the role can't use → the role's home.
+ * These checks are redirect hints; every /api call is still authorised by the server.
  */
 export function proxy(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
+  const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/');
 
-  if (process.env.MAINTENANCE_MODE === 'true' && pathname !== '/maintenance')
+  if (isAdmin) {
+    const blocked = guardAdmin(req, pathname);
+    if (blocked) return blocked;
+  } else if (process.env.MAINTENANCE_MODE === 'true' && pathname !== '/maintenance')
+    // Staff keep working during maintenance.
     return NextResponse.rewrite(new URL('/maintenance', req.url));
 
   if (PROTECTED.test(pathname) && !hasSession(req)) {

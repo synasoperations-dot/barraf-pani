@@ -20,7 +20,7 @@ export function StickerToggle({ children, aside, className, ...rest }: StickerTo
         'group inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-sticker border-3 border-ink bg-white py-1.5 ps-1.5 pe-3 shadow-hard-sm select-none',
         'transition-[rotate,background-color,box-shadow] duration-200 ease-(--ease-overshoot)',
         'has-checked:-rotate-4 has-checked:bg-yellow',
-        'has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-blue-deep',
+        'has-focus-visible:ring-4 has-focus-visible:ring-yellow has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-ink',
         'has-disabled:cursor-not-allowed has-disabled:bg-paper has-disabled:text-muted has-disabled:shadow-none',
         className,
       )}
