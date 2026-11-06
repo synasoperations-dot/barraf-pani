@@ -2,8 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useState, type ReactNode } from 'react';
-
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
+import { USE_MOCKS } from '@/lib/flags';
 
 // ssr:false keeps msw/browser out of the server bundle; with mocks off it is never requested.
 const MockRuntime = USE_MOCKS ? dynamic(() => import('@/mocks/MockRuntime'), { ssr: false }) : null;

@@ -2,30 +2,41 @@ import { sse } from 'msw';
 import { z } from 'zod';
 import * as C from '@/lib/contracts';
 import {
+  applyBookingAction,
+  codCheck,
   db,
-  emitOrder,
-  emitSoldOut,
   fail,
+  findBooking,
   findOrderById,
   idempotent,
   maskPhone,
   MOCK_OTP,
+  newOrder,
   now,
-  onOrderChange,
+  orderFeed,
+  priceCart,
   publicStaff,
   randomToken,
   requireStaff,
+  resolveZone,
   save,
+  setSoldOut,
+  toAdminOrder,
+  toBooking,
   transition,
+  upsertCustomer,
   type CustomerRec,
+  type OrderRec,
 } from '../db';
 import { body, json, ok, param, route } from '../http';
+import { is } from '../scenario';
 
 const MANAGERS: C.StaffRole[] = ['owner', 'manager'];
-const ORDER_ROLES: C.StaffRole[] = ['owner', 'manager', 'kitchen', 'cashier', 'rider'];
+const FRONT: C.StaffRole[] = ['owner', 'manager', 'cashier'];
+const ALL: C.StaffRole[] = ['owner', 'manager', 'kitchen', 'cashier', 'rider'];
 const ACTIVE: C.OrderStatus[] = ['placed', 'accepted', 'preparing', 'ready', 'out_for_delivery'];
 
-/** Who may make which move (ARCHITECTURE §4.2 role check). */
+/** Role check on top of the state machine (§4.2). */
 function canMove(role: C.StaffRole, from: C.OrderStatus, to: C.OrderStatus) {
   if (MANAGERS.includes(role)) return true;
   if (role === 'rider')
@@ -40,6 +51,9 @@ function canMove(role: C.StaffRole, from: C.OrderStatus, to: C.OrderStatus) {
 
 function adminCustomer(c: CustomerRec): C.AdminCustomer {
   const orders = db.orders.filter((o) => o.customerId === c.id);
+  const done = orders.filter(
+    (o) => o.order.status === 'delivered' || o.order.status === 'picked_up',
+  );
   return {
     id: c.id,
     name: c.name,
@@ -49,69 +63,125 @@ function adminCustomer(c: CustomerRec): C.AdminCustomer {
     codAllowed: c.codAllowed,
     failedCodCount: c.failedCodCount,
     orderCount: orders.length,
-    totalSpent: orders
-      .filter((o) => ['delivered', 'picked_up'].includes(o.order.status))
-      .reduce((s, o) => s + o.order.total, 0),
+    totalSpent: done.reduce((s, o) => s + o.order.total, 0),
     whatsappOptIn: c.whatsappOptIn,
     anonymizedAt: c.anonymizedAt,
     createdAt: c.createdAt,
   };
 }
 
-const findCustomer = (id: string) =>
-  db.customers.find((c) => c.id === id) ?? fail('NOT_FOUND', 'Customer not found.');
-const findItem = (id: string) =>
-  db.menu.items.find((i) => i.id === id) ?? fail('NOT_FOUND', 'Item not found.');
-const findRefund = (id: string) =>
-  db.refunds.find((r) => r.id === id) ?? fail('NOT_FOUND', 'Refund not found.');
+const find = <T>(list: T[], pred: (x: T) => boolean, what: string) =>
+  list.find(pred) ?? fail('NOT_FOUND', `${what} not found.`);
+const findCustomer = (id: string) => find(db.customers, (c) => c.id === id, 'Customer');
+const findItem = (id: string) => find(db.menu.items, (i) => i.id === id, 'Item');
+const riders = () => db.staff.filter((s) => s.role === 'rider' && s.isActive);
 
-function settlement(rider: C.Rider): C.RiderSettlement {
-  const orders = db.orders.filter(
+function assignmentView(
+  rec: OrderRec,
+  viewer: { id: string; role: C.StaffRole },
+): C.RiderAssignment {
+  const a = rec.assignment!;
+  return {
+    orderId: rec.order.id,
+    riderId: a.riderId,
+    assignedAt: a.assignedAt,
+    pickedUpAt: a.pickedUpAt,
+    deliveredAt: a.deliveredAt,
+    cashInHand: a.cashInHand,
+    order: toAdminOrder(rec, viewer),
+  };
+}
+
+function settlement(rider: C.Staff): C.RiderSettlement {
+  const open = db.orders.filter(
     (o) =>
-      o.order.rider?.id === rider.id &&
-      o.order.paymentMethod === 'cod' &&
-      o.order.status === 'delivered' &&
-      !o.settled,
+      o.assignment?.riderId === rider.id && o.assignment.cashInHand > 0 && !o.assignment.settled,
   );
   return {
     rider,
-    openCash: orders.reduce((s, o) => s + o.order.total, 0),
-    orders: orders.map((o) => ({
-      token: o.order.token,
+    openCash: open.reduce((s, o) => s + o.assignment!.cashInHand, 0),
+    orders: open.map((o) => ({
+      publicToken: o.order.publicToken,
       number: o.order.number,
-      cashInHand: o.order.total,
-      deliveredAt: o.order.completedAt,
+      cashInHand: o.assignment!.cashInHand,
+      deliveredAt: o.assignment!.deliveredAt,
     })),
   };
 }
 
+function crud<T extends { id: string }>(
+  path: string,
+  list: () => T[],
+  schema: z.ZodType<Omit<T, 'id'>>,
+  prefix: string,
+  roles = MANAGERS,
+) {
+  return [
+    route('get', path, () => {
+      requireStaff(roles);
+      return json(list());
+    }),
+    route('post', path, async ({ request }) => {
+      requireStaff(roles);
+      const row = {
+        ...(await body(request, schema)),
+        id: `${prefix}_${randomToken().slice(0, 10)}`,
+      } as T;
+      list().push(row);
+      save();
+      return json(row, 201);
+    }),
+    route('patch', `${path}/:id`, async (info) => {
+      requireStaff(roles);
+      const row = find(list(), (x) => x.id === param(info, 'id'), 'Row');
+      Object.assign(row, await body(info.request, (schema as unknown as z.ZodObject).partial()));
+      save();
+      return json(row);
+    }),
+  ];
+}
+
 export const adminHandlers = [
-  /* ---------- Auth ---------- */
+  /* ---------- Staff auth: email + password, TOTP 2FA (§7) ---------- */
   route('post', '/api/admin/auth/login', async ({ request }) => {
-    const { email, password } = await body(request, C.AdminLoginRequest);
+    const { email, password } = await body(request, C.StaffLoginRequest);
     const staff = db.staff.find((s) => s.email === email && s.isActive);
     if (!staff || staff.password !== password)
-      return fail('UNAUTHENTICATED', 'Email or password is wrong.');
+      return fail('UNAUTHENTICATED', 'Email or password is wrong.', { reason: 'session' });
+    const next: C.StaffLoginResponse['next'] = staff.twoFactorEnabled
+      ? 'verify_2fa'
+      : MANAGERS.includes(staff.role)
+        ? 'enrol_2fa' // 2FA is required for owner and manager
+        : 'ok';
     db.session.staffId = staff.id;
-    db.session.staff2faPending = staff.twoFactorEnabled;
+    db.session.staffPending = next === 'ok' ? null : next;
     save();
-    return json({
-      user: publicStaff(staff),
-      requires2fa: staff.twoFactorEnabled,
-    } satisfies C.AdminLoginResponse);
+    return json({ staff: publicStaff(staff), next } satisfies C.StaffLoginResponse);
   }),
-  route('post', '/api/admin/auth/2fa', async ({ request }) => {
-    const { code } = await body(request, C.Admin2faRequest);
-    const staff = db.staff.find((s) => s.id === db.session.staffId);
-    if (!staff) return fail('UNAUTHENTICATED', 'Log in first.');
+  route('post', '/api/admin/auth/2fa/enrol', () => {
+    const staff =
+      db.staff.find((s) => s.id === db.session.staffId) ??
+      fail('UNAUTHENTICATED', 'Log in first.', { reason: 'session' });
+    const secret = 'MOCKSECRETBARRAFPAANI';
+    return json({
+      secret,
+      otpauthUrl: `otpauth://totp/BarrafPaani:${encodeURIComponent(staff.email)}?secret=${secret}&issuer=BarrafPaani`,
+    } satisfies C.TwoFactorEnrolResponse);
+  }),
+  route('post', '/api/admin/auth/2fa/verify', async ({ request }) => {
+    const { code } = await body(request, C.TwoFactorVerifyRequest);
+    const staff =
+      db.staff.find((s) => s.id === db.session.staffId) ??
+      fail('UNAUTHENTICATED', 'Log in first.', { reason: 'session' });
     if (code !== MOCK_OTP) fail('OTP_INVALID', 'That code is not right.');
-    db.session.staff2faPending = false;
+    staff.twoFactorEnabled = true;
+    db.session.staffPending = null;
     save();
     return json(publicStaff(staff));
   }),
   route('post', '/api/admin/auth/logout', () => {
     db.session.staffId = null;
-    db.session.staff2faPending = false;
+    db.session.staffPending = null;
     save();
     return ok();
   }),
@@ -119,73 +189,206 @@ export const adminHandlers = [
 
   /* ---------- Orders ---------- */
   route('get', '/api/admin/orders', ({ request }) => {
-    requireStaff(ORDER_ROLES);
+    const staff = requireStaff(ALL);
     const q = new URL(request.url).searchParams;
     const statuses = q.getAll('status');
+    const sources = q.getAll('source');
     const from = q.get('from');
     const to = q.get('to');
     return json(
       db.orders
-        .map((r) => r.order)
-        .filter((o) => !statuses.length || statuses.includes(o.status))
-        .filter((o) => !from || o.createdAt >= from)
-        .filter((o) => !to || o.createdAt <= to),
+        .filter((r) => !statuses.length || statuses.includes(r.order.status))
+        .filter((r) => !sources.length || sources.includes(r.order.source))
+        .filter((r) => !from || r.order.createdAt >= from)
+        .filter((r) => !to || r.order.createdAt <= to)
+        .map((r) => toAdminOrder(r, staff)),
     );
   }),
-  route('get', '/api/admin/orders/:id', (info) => {
-    requireStaff(ORDER_ROLES);
-    return json(findOrderById(param(info, 'id')).order);
+  // Registered before `/:id` so "manual" is never read as an id.
+  route('post', '/api/admin/orders/manual', async ({ request }) => {
+    const staff = requireStaff(FRONT);
+    const input = await body(request, C.ManualOrderRequest);
+    const result = await idempotent(
+      request.headers.get(C.HEADERS.idempotencyKey),
+      input,
+      async () => {
+        // Staff took the call: no OTP or Turnstile; every other create_order rule applies.
+        const customer = upsertCustomer(input.customer.phone, input.customer.name);
+        let address: C.Address | null = null;
+        if (input.fulfilment === 'delivery') {
+          if (input.addressId)
+            address = find(customer.addresses, (a) => a.id === input.addressId, 'Address');
+          else if (input.newAddress) {
+            resolveZone(input.newAddress.location);
+            address = {
+              ...input.newAddress,
+              id: `adr_${randomToken().slice(0, 12)}`,
+              isDefault: customer.addresses.length === 0,
+            };
+            customer.addresses.push(address);
+          }
+        }
+        const priced = priceCart(
+          { ...input, location: address?.location ?? null, tip: 0 },
+          customer,
+        );
+        if (input.paymentMethod === 'cod') {
+          const cod = codCheck(customer, priced.total, input.scheduledFor);
+          if (!cod.allowed)
+            fail('COD_NOT_ALLOWED', 'Cash on delivery is not available for this order.', {
+              reason: cod.reason,
+            });
+        }
+        const rec = newOrder({ ...input, whatsappOptIn: false }, priced, customer, address);
+        rec.order.events[0]!.actorName = staff.name;
+        const out: C.ManualOrderResponse = {
+          order: toAdminOrder(rec, staff),
+          publicToken: rec.order.publicToken,
+          trackingPath: `/track/${rec.order.publicToken}`,
+        };
+        return { status: 201, body: out };
+      },
+    );
+    return json(result.body, result.status);
   }),
+  route('get', '/api/admin/orders/:id', (info) =>
+    json(toAdminOrder(findOrderById(param(info, 'id')), requireStaff(ALL))),
+  ),
   route('post', '/api/admin/orders/:id/transition', async (info) => {
-    const staff = requireStaff(ORDER_ROLES);
+    const staff = requireStaff(ALL);
     const input = await body(info.request, C.TransitionRequest);
+    const id = param(info, 'id');
     const result = await idempotent(
       info.request.headers.get(C.HEADERS.idempotencyKey),
-      { id: param(info, 'id'), ...input },
+      { id, ...input },
       async () => {
-        const rec = findOrderById(param(info, 'id'));
+        const rec = findOrderById(id);
         const o = rec.order;
-        if (o.status === input.to) return { status: 200, body: o }; // no-op success
+        if (o.status === input.to) return { status: 200, body: toAdminOrder(rec, staff) }; // no-op success
+        if (is('version_conflict') && !rec.versionConflictServed) {
+          rec.versionConflictServed = true;
+          o.version += 1; // someone else's tablet got there first
+          save();
+        }
         if (o.version !== input.version)
-          fail('VERSION_CONFLICT', 'Someone else just updated this order.', { current: o });
-        const allowed = C.ORDER_TRANSITIONS[o.status].includes(input.to);
-        const fitsFulfilment = !(
+          fail('VERSION_CONFLICT', 'Someone else just updated this order.', {
+            currentVersion: o.version,
+          });
+        const fits = !(
           (input.to === 'out_for_delivery' && o.fulfilment === 'pickup') ||
           (input.to === 'picked_up' && o.fulfilment === 'delivery')
         );
-        if (!allowed || !fitsFulfilment)
+        if (!C.ORDER_TRANSITIONS[o.status].includes(input.to) || !fits)
           fail('INVALID_TRANSITION', `Cannot move from ${o.status} to ${input.to}.`);
         if (!canMove(staff.role, o.status, input.to))
           fail('FORBIDDEN', 'Your role cannot make that change.');
         rec.autoAdvance = false; // staff took over
+        rec.rejectAt = null;
         if (input.to === 'cancelled') o.cancelReason = input.note;
         if (input.to === 'cancelled' && o.status === 'out_for_delivery') {
           const c = db.customers.find((x) => x.id === rec.customerId);
-          if (c && ++c.failedCodCount >= 2) c.codAllowed = false;
+          if (c && ++c.failedCodCount >= 2) c.codAllowed = false; // 2+ no-shows disable COD (§7)
         }
         transition(rec, input.to, 'staff', staff.name, input.note);
-        return { status: 200, body: o };
+        return { status: 200, body: toAdminOrder(rec, staff) };
       },
     );
     return json(result.body, result.status);
   }),
   route('post', '/api/admin/orders/:id/assign-rider', async (info) => {
-    requireStaff(['owner', 'manager', 'cashier']);
+    const staff = requireStaff(FRONT);
     const { riderId } = await body(info.request, C.AssignRiderRequest);
-    const rider =
-      db.riders.find((r) => r.id === riderId && r.isActive) ??
-      fail('NOT_FOUND', 'Rider not found.');
+    const rider = find(riders(), (r) => r.id === riderId, 'Rider');
     const rec = findOrderById(param(info, 'id'));
+    if (rec.order.fulfilment !== 'delivery')
+      fail('INVALID_TRANSITION', 'Pickup orders have no rider.');
+    rec.assignment = {
+      riderId: rider.id,
+      assignedAt: now(),
+      pickedUpAt: null,
+      deliveredAt: null,
+      cashInHand: 0,
+      settled: false,
+    };
     rec.order.rider = { id: rider.id, name: rider.name };
     rec.order.version += 1;
+    rec.autoAdvance = false; // the rider drives it from here
     save();
-    emitOrder(rec, 'updated');
-    return json(rec.order);
+    orderFeed.emit({ rec, kind: 'updated' });
+    return json(toAdminOrder(rec, staff));
+  }),
+
+  /* ---------- Rider PWA ---------- */
+  route('get', '/api/rider/assignments', () => {
+    const rider = requireStaff(['rider']);
+    return json(
+      db.orders
+        .filter(
+          (o) =>
+            o.assignment?.riderId === rider.id &&
+            (o.order.status === 'ready' ||
+              o.order.status === 'out_for_delivery' ||
+              !o.assignment.settled),
+        )
+        .map((o) => assignmentView(o, rider)),
+    );
+  }),
+  route('post', '/api/rider/assignments/:orderId/picked-up', async (info) => {
+    const rider = requireStaff(['rider']);
+    const rec = find(
+      db.orders,
+      (o) => o.order.id === param(info, 'orderId') && o.assignment?.riderId === rider.id,
+      'Assignment',
+    );
+    const result = await idempotent(
+      info.request.headers.get(C.HEADERS.idempotencyKey),
+      { id: rec.order.id, step: 'picked_up' },
+      async () => {
+        if (rec.order.status !== 'out_for_delivery') {
+          if (rec.order.status !== 'ready')
+            fail('INVALID_TRANSITION', 'The order is not ready yet.');
+          rec.assignment!.pickedUpAt = now();
+          transition(rec, 'out_for_delivery', 'staff', rider.name);
+        }
+        return { status: 200, body: assignmentView(rec, rider) };
+      },
+    );
+    return json(result.body, result.status);
+  }),
+  route('post', '/api/rider/assignments/:orderId/delivered', async (info) => {
+    const rider = requireStaff(['rider']);
+    const rec = find(
+      db.orders,
+      (o) => o.order.id === param(info, 'orderId') && o.assignment?.riderId === rider.id,
+      'Assignment',
+    );
+    const { cashCollected } = await body(info.request, C.DeliveredRequest);
+    const result = await idempotent(
+      info.request.headers.get(C.HEADERS.idempotencyKey),
+      { id: rec.order.id, cashCollected },
+      async () => {
+        if (rec.order.status !== 'delivered') {
+          if (rec.order.status !== 'out_for_delivery')
+            fail('INVALID_TRANSITION', 'Mark it picked up first.');
+          const due = rec.order.paymentMethod === 'cod' ? rec.order.total : 0;
+          if (cashCollected !== due)
+            fail('VALIDATION_FAILED', `Collect exactly Rs ${due}.`, {
+              field: 'cashCollected',
+              due,
+            });
+          rec.assignment!.deliveredAt = now();
+          rec.assignment!.cashInHand = cashCollected;
+          transition(rec, 'delivered', 'staff', rider.name);
+        }
+        return { status: 200, body: assignmentView(rec, rider) };
+      },
+    );
+    return json(result.body, result.status);
   }),
 
   /* ---------- Menu ---------- */
   route('get', '/api/admin/menu', () => {
-    requireStaff(ORDER_ROLES);
+    requireStaff(ALL);
     return json(db.menu);
   }),
   route('post', '/api/admin/menu/items', async ({ request }) => {
@@ -210,7 +413,7 @@ export const adminHandlers = [
   route('delete', '/api/admin/menu/items/:id', (info) => {
     requireStaff(MANAGERS);
     const item = findItem(param(info, 'id'));
-    item.isActive = false; // soft delete: orders reference it
+    item.isActive = false; // soft delete: orders reference it (§5 conventions)
     db.menu.updatedAt = now();
     save();
     return json(item);
@@ -219,11 +422,7 @@ export const adminHandlers = [
     requireStaff(['owner', 'manager', 'kitchen']);
     const item = findItem(param(info, 'id'));
     const input = await body(info.request, C.SoldOutRequest);
-    item.isSoldOut = input.isSoldOut;
-    item.soldOutUntil = input.isSoldOut ? input.soldOutUntil : null;
-    db.menu.updatedAt = now();
-    save();
-    emitSoldOut({ itemId: item.id, isSoldOut: item.isSoldOut, soldOutUntil: item.soldOutUntil });
+    setSoldOut(item.id, input.isSoldOut, input.soldOutUntil);
     return json(item);
   }),
   route('post', '/api/admin/menu/categories', async ({ request }) => {
@@ -238,9 +437,7 @@ export const adminHandlers = [
   }),
   route('patch', '/api/admin/menu/categories/:id', async (info) => {
     requireStaff(MANAGERS);
-    const cat =
-      db.menu.categories.find((c) => c.id === param(info, 'id')) ??
-      fail('NOT_FOUND', 'Category not found.');
+    const cat = find(db.menu.categories, (c) => c.id === param(info, 'id'), 'Category');
     Object.assign(cat, await body(info.request, C.CategoryPatch));
     save();
     return json(cat);
@@ -251,22 +448,22 @@ export const adminHandlers = [
       request,
       z.object({ fileName: z.string(), dataUrl: z.string().startsWith('data:image/') }),
     );
-    // Mock keeps the data URL as the path; the real backend re-encodes to WebP/AVIF in storage.
+    // Mock keeps the data URL as the path; the backend checks MIME + signature and re-encodes.
     return json({ path: dataUrl } satisfies C.UploadResponse, 201);
   }),
 
-  /* ---------- Store settings & zones ---------- */
-  route('get', '/api/admin/store', () => {
+  /* ---------- Settings, hours, holidays, zones ---------- */
+  route('get', '/api/admin/settings', () => {
     requireStaff(MANAGERS);
     return json(db.settings);
   }),
-  route('patch', '/api/admin/store', async ({ request }) => {
+  route('patch', '/api/admin/settings', async ({ request }) => {
     requireStaff(MANAGERS);
     Object.assign(db.settings, await body(request, C.StoreSettingsPatch));
     save();
     return json(db.settings);
   }),
-  route('post', '/api/admin/store/pause', async ({ request }) => {
+  route('post', '/api/admin/settings/pause', async ({ request }) => {
     requireStaff(MANAGERS);
     const { paused, reason } = await body(request, C.PauseRequest);
     db.settings.isAcceptingOrders = !paused;
@@ -274,32 +471,39 @@ export const adminHandlers = [
     save();
     return json(db.settings);
   }),
-  route('get', '/api/admin/zones', () => {
+  route('get', '/api/admin/hours', () => {
     requireStaff(MANAGERS);
-    return json(db.zones);
+    return json(db.hours);
   }),
-  route('post', '/api/admin/zones', async ({ request }) => {
+  route('put', '/api/admin/hours', async ({ request }) => {
     requireStaff(MANAGERS);
-    const zone: C.DeliveryZone = {
-      ...(await body(request, C.ZoneInput)),
-      id: `zone_${randomToken().slice(0, 10)}`,
-    };
-    db.zones.push(zone);
+    db.hours = (await body(request, C.HoursRequest)).hours;
     save();
-    return json(zone, 201);
+    return json(db.hours);
   }),
-  route('patch', '/api/admin/zones/:id', async (info) => {
+  route('get', '/api/admin/holidays', () => {
     requireStaff(MANAGERS);
-    const zone =
-      db.zones.find((z) => z.id === param(info, 'id')) ?? fail('NOT_FOUND', 'Zone not found.');
-    Object.assign(zone, await body(info.request, C.ZoneInput.partial()));
-    save();
-    return json(zone);
+    return json(db.holidays);
   }),
+  route('post', '/api/admin/holidays', async ({ request }) => {
+    requireStaff(MANAGERS);
+    const h = await body(request, C.Holiday);
+    db.holidays = [...db.holidays.filter((x) => x.date !== h.date), h].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+    save();
+    return json(db.holidays, 201);
+  }),
+  route('delete', '/api/admin/holidays/:date', (info) => {
+    requireStaff(MANAGERS);
+    db.holidays = db.holidays.filter((x) => x.date !== param(info, 'date'));
+    save();
+    return json(db.holidays);
+  }),
+  ...crud('/api/admin/zones', () => db.zones, C.ZoneInput, 'zone'),
   route('delete', '/api/admin/zones/:id', (info) => {
     requireStaff(MANAGERS);
-    const zone =
-      db.zones.find((z) => z.id === param(info, 'id')) ?? fail('NOT_FOUND', 'Zone not found.');
+    const zone = find(db.zones, (z) => z.id === param(info, 'id'), 'Zone');
     zone.isActive = false;
     save();
     return json(zone);
@@ -315,19 +519,14 @@ export const adminHandlers = [
     const input = await body(request, C.PromoInput);
     if (db.promos.some((p) => p.code === input.code))
       fail('VALIDATION_FAILED', 'Code already exists.', { field: 'code' });
-    const promo: C.AdminPromo = {
-      ...input,
-      id: `promo_${randomToken().slice(0, 10)}`,
-      usedCount: 0,
-    };
+    const promo: C.Promo = { ...input, id: `promo_${randomToken().slice(0, 10)}`, usedCount: 0 };
     db.promos.push(promo);
     save();
     return json(promo, 201);
   }),
   route('patch', '/api/admin/promos/:id', async (info) => {
     requireStaff(MANAGERS);
-    const promo =
-      db.promos.find((p) => p.id === param(info, 'id')) ?? fail('NOT_FOUND', 'Promo not found.');
+    const promo = find(db.promos, (p) => p.id === param(info, 'id'), 'Promo');
     Object.assign(promo, await body(info.request, C.PromoInput.partial()));
     save();
     return json(promo);
@@ -380,7 +579,7 @@ export const adminHandlers = [
     return json(adminCustomer(c));
   }),
 
-  /* ---------- Refunds ---------- */
+  /* ---------- Refunds: manager requests, owner approves (§13.2) ---------- */
   route('get', '/api/admin/refunds', () => {
     requireStaff(MANAGERS);
     return json(db.refunds);
@@ -392,20 +591,18 @@ export const adminHandlers = [
       request.headers.get(C.HEADERS.idempotencyKey),
       input,
       async () => {
-        const rec =
-          db.orders.find((o) => o.order.token === input.orderToken) ??
-          fail('NOT_FOUND', 'Order not found.');
+        const rec = find(db.orders, (o) => o.order.publicToken === input.orderToken, 'Order');
         if (rec.order.paymentStatus !== 'paid' || rec.order.paymentMethod === 'cod')
           fail('VALIDATION_FAILED', 'Only paid online orders can be refunded.');
-        const refunded = db.refunds
+        const already = db.refunds
           .filter((r) => r.orderToken === input.orderToken && r.status !== 'rejected')
           .reduce((s, r) => s + r.amount, 0);
-        if (input.amount + refunded > rec.order.total)
-          fail('VALIDATION_FAILED', 'Refund is more than was paid.');
+        if (input.amount + already > rec.order.total)
+          fail('VALIDATION_FAILED', 'Refund is more than was paid.', { field: 'amount' });
         const refund: C.Refund = {
           id: `ref_${randomToken().slice(0, 10)}`,
           orderNumber: rec.order.number,
-          orderToken: rec.order.token,
+          orderToken: rec.order.publicToken,
           provider: rec.order.paymentMethod,
           amount: input.amount,
           paidAmount: rec.order.total,
@@ -425,7 +622,7 @@ export const adminHandlers = [
   }),
   route('post', '/api/admin/refunds/:id/:action', (info) => {
     const staff = requireStaff(MANAGERS);
-    const refund = findRefund(param(info, 'id'));
+    const refund = find(db.refunds, (r) => r.id === param(info, 'id'), 'Refund');
     const action = param(info, 'action');
     if (action === 'approve') {
       if (staff.role !== 'owner') fail('FORBIDDEN', 'Only the owner approves refunds.');
@@ -441,7 +638,7 @@ export const adminHandlers = [
       refund.status = 'processed';
       refund.processedBy = staff.name;
       refund.processedAt = now();
-      const rec = db.orders.find((o) => o.order.token === refund.orderToken);
+      const rec = db.orders.find((o) => o.order.publicToken === refund.orderToken);
       if (rec) {
         const total = db.refunds
           .filter((r) => r.orderToken === refund.orderToken && r.status === 'processed')
@@ -453,24 +650,36 @@ export const adminHandlers = [
     return json(refund);
   }),
 
-  /* ---------- Riders ---------- */
+  /* ---------- Riders & settlement ---------- */
   route('get', '/api/admin/riders', () => {
-    requireStaff(['owner', 'manager', 'cashier']);
-    return json(db.riders);
+    requireStaff(FRONT);
+    return json(riders().map(publicStaff));
   }),
   route('get', '/api/admin/riders/settlement', () => {
     requireStaff(MANAGERS);
-    return json(db.riders.map(settlement));
+    return json(riders().map((r) => settlement(publicStaff(r))));
   }),
   route('post', '/api/admin/riders/:id/settle', (info) => {
     requireStaff(MANAGERS);
-    const rider =
-      db.riders.find((r) => r.id === param(info, 'id')) ?? fail('NOT_FOUND', 'Rider not found.');
-    const before = settlement(rider);
+    const rider = publicStaff(find(riders(), (r) => r.id === param(info, 'id'), 'Rider'));
     for (const o of db.orders)
-      if (before.orders.some((x) => x.token === o.order.token)) o.settled = true;
+      if (o.assignment?.riderId === rider.id && o.assignment.cashInHand > 0)
+        o.assignment.settled = true;
     save();
     return json(settlement(rider));
+  }),
+
+  /* ---------- Reviews moderation ---------- */
+  route('get', '/api/admin/reviews', () => {
+    requireStaff(MANAGERS);
+    return json(db.reviews);
+  }),
+  route('patch', '/api/admin/reviews/:id', async (info) => {
+    requireStaff(MANAGERS);
+    const review = find(db.reviews, (r) => r.id === param(info, 'id'), 'Review');
+    Object.assign(review, await body(info.request, C.ReviewPatch));
+    save();
+    return json(review);
   }),
 
   /* ---------- Reports ---------- */
@@ -483,7 +692,9 @@ export const adminHandlers = [
       .map((r) => r.order)
       .filter(
         (o) =>
-          o.createdAt >= from && o.createdAt <= to && ['delivered', 'picked_up'].includes(o.status),
+          o.createdAt >= from &&
+          o.createdAt <= to &&
+          (o.status === 'delivered' || o.status === 'picked_up'),
       );
     const gross = done.reduce((s, o) => s + o.total, 0);
     const byDay = new Map<string, { orders: number; total: number }>();
@@ -497,6 +708,11 @@ export const adminHandlers = [
         items.set(l.itemId, { ...it, qty: it.qty + l.qty, total: it.total + l.lineTotal });
       }
     }
+    const group = <K extends string>(keys: readonly K[], get: (o: C.AdminOrder) => K) =>
+      keys.map((k) => {
+        const m = done.filter((o) => get(o) === k);
+        return { key: k, count: m.length, total: m.reduce((s, o) => s + o.total, 0) };
+      });
     const report: C.SalesReport = {
       from,
       to,
@@ -505,10 +721,13 @@ export const adminHandlers = [
       discounts: done.reduce((s, o) => s + o.discount, 0),
       deliveryFees: done.reduce((s, o) => s + o.deliveryFee, 0),
       averageOrder: done.length ? Math.round(gross / done.length) : 0,
-      byPaymentMethod: C.PaymentMethod.options.map((method) => {
-        const m = done.filter((o) => o.paymentMethod === method);
-        return { method, count: m.length, total: m.reduce((s, o) => s + o.total, 0) };
-      }),
+      byPaymentMethod: group(C.PaymentMethod.options, (o) => o.paymentMethod).map(
+        ({ key, ...v }) => ({ method: key, ...v }),
+      ),
+      bySource: group(C.OrderSource.options, (o) => o.source).map(({ key, ...v }) => ({
+        source: key,
+        ...v,
+      })),
       byDay: [...byDay].map(([date, v]) => ({ date, ...v })),
       topItems: [...items]
         .map(([itemId, v]) => ({ itemId, ...v }))
@@ -518,30 +737,68 @@ export const adminHandlers = [
     return json(report);
   }),
 
-  /* ---------- Notifications ---------- */
-  route('get', '/api/admin/notifications/failed', () => {
+  /* ---------- Outbox: failed / dead + retry (§4.5) ---------- */
+  route('get', '/api/admin/outbox', ({ request }) => {
     requireStaff(MANAGERS);
-    return json(db.notifications);
+    const statuses = new URL(request.url).searchParams.getAll('status');
+    return json(db.outbox.filter((o) => !statuses.length || statuses.includes(o.status)));
   }),
-  route('post', '/api/admin/notifications/:id/retry', (info) => {
+  route('post', '/api/admin/outbox/:id/retry', (info) => {
     requireStaff(MANAGERS);
-    const n =
-      db.notifications.find((x) => x.id === param(info, 'id')) ??
-      fail('NOT_FOUND', 'Notification not found.');
-    n.status = 'failed';
-    n.attempts = 0;
-    n.nextAttemptAt = now();
+    const item = find(db.outbox, (o) => o.id === param(info, 'id'), 'Outbox item');
+    if (item.status !== 'failed' && item.status !== 'dead')
+      fail('INVALID_TRANSITION', 'Only failed or dead items can be retried.');
+    item.status = 'pending';
+    item.attempts = 0;
+    item.lastError = null;
+    item.nextAttemptAt = now();
     save();
-    return json(n);
+    return json(item);
   }),
 
-  /* ---------- Realtime (staff) ---------- */
+  /* ---------- Bookings, deals, events (ADDITION) ---------- */
+  route('get', '/api/admin/bookings', ({ request }) => {
+    requireStaff(FRONT);
+    const statuses = new URL(request.url).searchParams.getAll('status');
+    return json(
+      db.bookings.filter((b) => !statuses.length || statuses.includes(b.status)).map(toBooking),
+    );
+  }),
+  route('patch', '/api/admin/bookings/:token', async (info) => {
+    requireStaff(FRONT);
+    const b = findBooking(param(info, 'token'));
+    applyBookingAction(b, await body(info.request, C.BookingAction));
+    return json(toBooking(b));
+  }),
+  ...crud('/api/admin/deals', () => db.deals, C.DealInput, 'deal'),
+  route('delete', '/api/admin/deals/:id', (info) => {
+    requireStaff(MANAGERS);
+    db.deals = db.deals.filter((d) => d.id !== param(info, 'id'));
+    save();
+    return ok();
+  }),
+  ...crud(
+    '/api/admin/events',
+    () => db.events,
+    C.EventInput.transform((e) => ({ ...e, spotsLeft: e.capacity })) as unknown as z.ZodType<
+      Omit<C.Event, 'id'>
+    >,
+    'event',
+  ),
+  route('delete', '/api/admin/events/:id', (info) => {
+    requireStaff(MANAGERS);
+    db.events = db.events.filter((e) => e.id !== param(info, 'id'));
+    save();
+    return ok();
+  }),
+
+  /* ---------- Realtime (staff channel) ---------- */
   sse('*/api/realtime/kitchen', ({ client, request }) => {
-    const off = onOrderChange((rec, kind) => {
-      if (!ACTIVE.includes(rec.order.status) && kind === 'created') return;
+    const off = orderFeed.on(({ rec, kind }) => {
+      if (kind === 'created' && !ACTIVE.includes(rec.order.status)) return;
       const event: C.KitchenEvent = {
         type: kind === 'created' ? 'order.created' : 'order.updated',
-        order: rec.order,
+        order: toAdminOrder(rec),
       };
       client.send({ data: JSON.stringify(event) });
     });

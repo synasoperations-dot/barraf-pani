@@ -11,7 +11,3 @@ export const useStoreStatus = () =>
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
-
-/** Name, address, phone, hours, socials. Rarely changes. */
-export const useStoreInfo = () =>
-  useQuery({ queryKey: ['store', 'info'], queryFn: api.store, staleTime: 10 * 60_000 });

@@ -7,9 +7,8 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-/** Living style guide. Dev / mock builds only. */
+/** Living style guide. Disabled in production builds. */
 export default function DevUiPage() {
-  if (process.env.NEXT_PUBLIC_USE_MOCKS !== 'true' && process.env.NODE_ENV === 'production')
-    notFound();
+  if (process.env.NODE_ENV === 'production') notFound();
   return <StyleGuide />;
 }

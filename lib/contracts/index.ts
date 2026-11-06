@@ -4,3 +4,4 @@ export * from './store';
 export * from './order';
 export * from './customer';
 export * from './admin';
+export * from './deals';

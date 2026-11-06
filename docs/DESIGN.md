@@ -2,7 +2,7 @@
 
 Living reference: run `pnpm dev` and open **`/dev/ui`**. Every token, motif and component below is shown there in every state.
 
-Implementation: tokens live in `app/globals.css` (`@theme`; Tailwind v4 is CSS-first, so there is no `tailwind.config.ts`). Tailwind's default colours, shadows and radii are **cleared**, so only brand tokens exist, and ESLint rejects hex literals in TS/TSX. **Every screen uses these tokens; no ad-hoc hex values anywhere.**
+Implementation: token **values** live in `tailwind.config.ts` (the single source; `theme`, not `extend`, so Tailwind's default colours, shadows and radii don't exist). A small plugin there also publishes them as CSS variables (`var(--color-ink)`, `var(--shadow-hard)`, …) for SVGs and inline styles. `app/globals.css` loads it with `@config` and holds the motif utilities (`grid-paper`, `rings`, `halftone`, `headline`, `press`) and base styles. ESLint rejects hex literals everywhere except `tailwind.config.ts`. **Every screen uses these tokens; no ad-hoc hex values anywhere.**
 
 ---
 
@@ -44,7 +44,7 @@ Additional contrast rules found while building:
 - **DM Sans 400/500/700** → `font-body` (default on `body`): body copy, forms, helper text.
 - **Urdu:** **Noto Nastaliq Urdu** (body) and **Lalezar** (display/headings). They are attached only when the locale is `ur` (no download for English users). The Latin fonts have no Arabic glyphs, so Urdu text falls through to them automatically inside the same `font-*` stacks. `:lang(ur) body` sets line-height **1.9** for Nastaliq.
 
-Files: `lib/fonts.ts` (declarations), `app/layout.tsx` (applied as CSS variables on `<html>`).
+Files: `lib/fonts.ts` (declarations), `tailwind.config.ts` (`font-display` / `font-sticker` / `font-price` / `font-body` stacks), `app/layout.tsx` (applied as CSS variables on `<html>`).
 
 ## Shape and depth
 
@@ -71,7 +71,7 @@ Files: `lib/fonts.ts` (declarations), `app/layout.tsx` (applied as CSS variables
 | `Rings`          | Concentric rings on `blue` (repeating-radial-gradient, white at ~13% opacity, 22px bands), behind the hero and page headers, like their menu cover. Utility: `rings`.                                        |
 | `Halftone`       | Ink dots at 7px pitch, 60% opacity. A strip under sticker headings. Utility: `halftone`.                                                                                                                     |
 | `Bolt`           | Yellow lightning bolt, ink 1.5px stroke, SVG.                                                                                                                                                                |
-| `BoltPair`       | A big and a small bolt, angled outward. Put one on each side of a heading (`side="start"` / `"end"`).                                                                                                        |
+| `BoltPair`       | A big and a small bolt, angled outward. Put one on each side of a heading (`side="start"` / `"end"`). **Mirrored in RTL** (the start side flips with `dir="rtl"`).                                           |
 | `StickerHeading` | White label, ink outline, `0 6px 0` shadow, Poppins 900, tilted, with `BoltPair` and optional `Halftone`. Props: `tilt`, `align`, `size` (`sm`/`md`/`lg`), `as`, `bolts`, `halftone`.                        |
 | `Wave`           | SVG wavy divider between orange/blue sections. Presets: `gentle`, `choppy`, `blob`. Colour via `fillClassName` (e.g. `fill-orange`).                                                                         |
 | `Blob`           | Decorative circle in `orange-blob` (on orange) or translucent blue-light (on blue). Position absolutely.                                                                                                     |
@@ -92,6 +92,11 @@ Files: `lib/fonts.ts` (declarations), `app/layout.tsx` (applied as CSS variables
 | `Input`, `TextArea`, `Checkbox`, `RadioCards` | `form.tsx`            | Visible labels, hints, friendly errors wired with `aria-invalid` / `aria-describedby`. Work with React Hook Form `register` (React 19 ref-as-prop). Checkbox unchecked by default (WhatsApp opt-in rule).                                                                                                                                                                                |
 | `Skeleton`, `EmptyState`, `ErrorState`, `Tag` | `states.tsx`          | Skeleton = grid-paper shimmer. ErrorState has `onRetry` and `offline`. Tag tones: yellow, blue, white, ink, orange; optional tilt.                                                                                                                                                                                                                                                       |
 | `Odometer`                                    | `Odometer.tsx`        | Number roll for totals; screen readers get the plain value.                                                                                                                                                                                                                                                                                                                              |
+| `PhoneInput`                                  | `PhoneInput.tsx`      | Shows Pakistani `03XX XXXXXXX` while typing; emits E.164 `+923…` (or null) via `lib/phone.ts` `normalizePkPhone`. Accepts pasted `+92` / `0092` / `92` forms                                                                                                                                                                                                                             |
+| `OtpInput`                                    | `OtpInput.tsx`        | 6 digit boxes: auto-advance, backspace goes back, arrow keys, paste fills all, `autocomplete="one-time-code"` for SMS autofill. Digits stay LTR in Urdu                                                                                                                                                                                                                                  |
+| `StatusTag` / `SourceTag`                     | `StatusTag.tsx`       | One tag per `order_status` (all 12): icon + label + lightness, never colour alone. `SourceTag` shows Website / WhatsApp / Phone / Walk-in / Foodpanda everywhere staff see orders                                                                                                                                                                                                        |
+| `Countdown`                                   | `Countdown.tsx`       | mm:ss / h:mm:ss to a target time (payment expiry, 8-minute accept window), `onExpire`. Screen readers get a static label, not per-second chatter                                                                                                                                                                                                                                         |
+| `MapPinPicker`                                | `MapPinPicker.tsx`    | The `MapPinPickerProps` interface (value, onChange, center, message) plus a placeholder: grid-paper board with a pin, "Use my location", and manual coordinates. The real Google Maps/Mapbox picker (§10) drops in behind the same props                                                                                                                                                 |
 
 ## Motion language (`lib/motion.ts`)
 

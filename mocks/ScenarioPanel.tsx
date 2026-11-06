@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { db, resetDb, restoreSoldOutScenario } from './db';
+import { db, resetDb, restoreSoldOut } from './db';
 import { getScenario, SCENARIOS, setScenario, type Scenario } from './scenario';
 
 /** Floating dev panel. Rendered only when NEXT_PUBLIC_USE_MOCKS=true (see MswBootstrap). */
 export default function ScenarioPanel() {
   const [open, setOpen] = useState(false);
-  const [scenario, setLocal] = useState<Scenario>(getScenario);
+  const [scenario] = useState<Scenario>(getScenario);
   const [stats, setStats] = useState(db.stats);
 
   useEffect(() => {
@@ -16,9 +16,8 @@ export default function ScenarioPanel() {
   }, []);
 
   function choose(s: Scenario) {
-    if (getScenario() === 'item_sold_out_mid_checkout') restoreSoldOutScenario();
+    restoreSoldOut();
     setScenario(s);
-    setLocal(s);
     const url = new URL(window.location.href);
     url.searchParams.set('scenario', s);
     window.location.replace(url); // reload so every query refetches under the new scenario
@@ -27,7 +26,7 @@ export default function ScenarioPanel() {
   return (
     <div className="fixed bottom-24 left-3 z-[60] font-body text-sm md:bottom-4">
       {open ? (
-        <div className="w-64 rounded-card border-3 border-ink bg-white p-3 shadow-hard-md">
+        <div className="flex max-h-[80dvh] w-80 flex-col rounded-card border-3 border-ink bg-white p-3 shadow-hard-md">
           <div className="mb-2 flex items-center justify-between">
             <strong className="font-sticker font-black">Mock scenario</strong>
             <button
@@ -38,18 +37,21 @@ export default function ScenarioPanel() {
               Close
             </button>
           </div>
-          <ul className="space-y-1">
-            {SCENARIOS.map((s) => (
+          <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto pe-1">
+            {(Object.keys(SCENARIOS) as Scenario[]).map((s) => (
               <li key={s}>
-                <label className="flex cursor-pointer items-center gap-2">
+                <label className="flex cursor-pointer items-start gap-2 rounded-chip px-1 py-0.5 hover:bg-paper">
                   <input
                     type="radio"
                     name="scenario"
                     checked={s === scenario}
                     onChange={() => choose(s)}
-                    className="accent-orange"
+                    className="mt-1 accent-orange"
                   />
-                  <code className="text-xs">{s}</code>
+                  <span>
+                    <code className="block text-xs font-bold">{s}</code>
+                    <span className="block text-xs text-muted">{SCENARIOS[s]}</span>
+                  </span>
                 </label>
               </li>
             ))}
@@ -63,7 +65,8 @@ export default function ScenarioPanel() {
             <dd className="text-end font-bold">{stats.inProgress}</dd>
           </dl>
           <p className="mt-2 text-xs text-muted">
-            OTP and staff 2FA code: 123456 · staff password: barraf123
+            OTP / staff 2FA: 123456 · staff password: barraf123 · staff: owner@, manager@, cashier@,
+            kitchen@, rider@barrafpaani.test
           </p>
           <button
             type="button"

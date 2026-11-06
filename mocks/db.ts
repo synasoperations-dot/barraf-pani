@@ -1,18 +1,22 @@
 /**
- * In-memory mock backend. Persisted to localStorage so reloads and other tabs (customer +
- * kitchen side by side) see the same orders. Status progression is time-based (`tick`), so
- * it catches up after a reload instead of relying on long-lived timers.
+ * In-memory mock backend that follows the backend rules (§4.1–4.3, §6, §7). Persisted to
+ * localStorage so reloads and other tabs (customer + kitchen side by side) share it.
+ * Progression is time-based (`tick`), so it catches up after a reload.
  */
 import * as C from '@/lib/contracts';
+import { computeTotals, effectiveMinOrder, lineTotal, promoDiscount, shortBy } from '@/lib/money';
 import { FILLET_FURY_ID, menuFixture } from './fixtures/menu';
 import {
+  holidaysFixture,
+  hoursFixture,
   promosFixture,
-  ridersFixture,
-  storeInfoFixture,
+  reviewsFixture,
+  staffFixture,
   storeSettingsFixture,
   zonesFixture,
+  type StaffRec,
 } from './fixtures/store';
-import { is } from './scenario';
+import { is, scenarioElapsed } from './scenario';
 
 /* ------------------------------------------------------------------ */
 /* Errors                                                              */
@@ -42,7 +46,6 @@ export const fail = (
 /* ------------------------------------------------------------------ */
 
 export const MOCK_OTP = '123456';
-export const MOCK_STAFF_PASSWORD = 'barraf123';
 
 export interface CustomerRec extends C.Customer {
   isBlocked: boolean;
@@ -55,9 +58,18 @@ export interface CustomerRec extends C.Customer {
 export interface PaymentRec {
   provider: C.OnlineProvider;
   status: C.PaymentState;
-  outcome: 'success' | 'fail' | 'stuck';
+  outcome: 'success' | 'fail' | 'stuck' | 'expire' | 'late_success';
   startedAt: number;
   expiresAt: number;
+}
+
+export interface AssignmentRec {
+  riderId: string;
+  assignedAt: string;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  cashInHand: number;
+  settled: boolean;
 }
 
 export interface OrderRec {
@@ -67,7 +79,10 @@ export interface OrderRec {
   lastChangeAt: number;
   cartHash: string;
   payment: PaymentRec | null;
-  settled: boolean;
+  assignment: AssignmentRec | null;
+  /** Scenario hook: reject this order at this time (order_rejected / auto_rejected). */
+  rejectAt: number | null;
+  versionConflictServed: boolean;
 }
 
 interface IdemRec {
@@ -77,89 +92,87 @@ interface IdemRec {
   body?: unknown;
 }
 
-interface StaffRec extends C.AdminUser {
-  password: string;
+export interface BookingRec extends C.Booking {
+  resolveAt: number | null;
 }
 
 interface State {
   menu: C.Menu;
   settings: C.StoreSettings;
+  hours: C.OpeningHours[];
+  holidays: C.Holiday[];
   zones: C.DeliveryZone[];
-  promos: C.AdminPromo[];
-  riders: C.Rider[];
+  promos: C.Promo[];
+  redemptions: { promoId: string; customerId: string; orderId: string }[];
   staff: StaffRec[];
   refunds: C.Refund[];
-  notifications: C.FailedNotification[];
+  reviews: C.Review[];
+  outbox: C.OutboxItem[];
+  deals: C.Deal[];
+  events: C.Event[];
+  bookings: BookingRec[];
   customers: CustomerRec[];
   orders: OrderRec[];
   nextOrderNumber: number;
-  session: { customerId: string | null; staffId: string | null; staff2faPending: boolean };
+  session: {
+    customerId: string | null;
+    staffId: string | null;
+    staffPending: 'verify_2fa' | 'enrol_2fa' | null;
+  };
   otps: Record<string, { code: string; expiresAt: number; sentAt: number[] }>;
+  bookingAttempts: Record<string, number[]>;
   idem: Record<string, IdemRec>;
+  /** in_progress scenario: IN_PROGRESS answers served per key. */
+  inProgressServed: Record<string, number>;
   stats: { ordersCreated: number; replays: number; inProgress: number };
   soldOutTriggered: boolean;
+  liveSoldOutDone: boolean;
+  lastInjectedAt: number;
 }
 
-const STORAGE_KEY = 'bp-mock-db-v1';
+const STORAGE_KEY = 'bp-mock-db-v2';
 const clone = <T>(v: T): T => structuredClone(v);
+export const now = () => new Date().toISOString();
 
 function fresh(): State {
   return {
     menu: clone(menuFixture),
     settings: clone(storeSettingsFixture),
+    hours: clone(hoursFixture),
+    holidays: clone(holidaysFixture),
     zones: clone(zonesFixture),
     promos: clone(promosFixture),
-    riders: clone(ridersFixture),
-    staff: [
-      {
-        id: 'staff_owner',
-        name: 'Owner (mock)',
-        email: 'owner@barrafpaani.test',
-        role: 'owner',
-        twoFactorEnabled: true,
-        isActive: true,
-        password: MOCK_STAFF_PASSWORD,
-      },
-      {
-        id: 'staff_manager',
-        name: 'Manager (mock)',
-        email: 'manager@barrafpaani.test',
-        role: 'manager',
-        twoFactorEnabled: true,
-        isActive: true,
-        password: MOCK_STAFF_PASSWORD,
-      },
-      {
-        id: 'staff_kitchen',
-        name: 'Kitchen tablet (mock)',
-        email: 'kitchen@barrafpaani.test',
-        role: 'kitchen',
-        twoFactorEnabled: false,
-        isActive: true,
-        password: MOCK_STAFF_PASSWORD,
-      },
-    ],
+    redemptions: [],
+    staff: clone(staffFixture),
     refunds: [],
-    notifications: [
+    reviews: clone(reviewsFixture),
+    outbox: [
       {
-        id: 'ntf_1',
+        id: 'obx_seed',
         topic: 'whatsapp.order_placed',
-        orderNumber: 'BP-1041',
+        dedupKey: 'order:BP-1041:placed',
         status: 'dead',
         attempts: 6,
-        lastError: 'Template not approved (mock)',
         nextAttemptAt: null,
+        lastError: 'Template not approved (mock)',
         createdAt: new Date(Date.now() - 3_600_000).toISOString(),
       },
     ],
+    deals: [],
+    events: [],
+    bookings: [],
     customers: [],
     orders: [],
     nextOrderNumber: 1042,
-    session: { customerId: null, staffId: null, staff2faPending: false },
+    session: { customerId: null, staffId: null, staffPending: null },
     otps: {},
+    bookingAttempts: {},
     idem: {},
+    inProgressServed: {},
     stats: { ordersCreated: 0, replays: 0, inProgress: 0 },
     soldOutTriggered: false,
+    liveSoldOutDone: false,
+    lastInjectedAt: 0,
   };
 }
 
@@ -181,50 +194,46 @@ export function save() {
   } catch {}
 }
 
-/** Leaving the sold-out scenario puts Fillet Fury back on sale. */
-export function restoreSoldOutScenario() {
-  const item = db.menu.items.find((i) => i.id === FILLET_FURY_ID);
-  if (item) item.isSoldOut = false;
-  db.soldOutTriggered = false;
-  save();
-}
-
 export function resetDb() {
   db = fresh();
   save();
 }
 
+/** Leaving the sold-out scenarios puts Fillet Fury back on sale. */
+export function restoreSoldOut() {
+  const item = db.menu.items.find((i) => i.id === FILLET_FURY_ID);
+  if (item) item.isSoldOut = false;
+  db.soldOutTriggered = false;
+  db.liveSoldOutDone = false;
+  save();
+}
+
 /* ------------------------------------------------------------------ */
-/* Change feeds (consumed by the SSE handlers)                          */
+/* Change feeds (SSE handlers subscribe)                                */
 /* ------------------------------------------------------------------ */
 
-type OrderListener = (rec: OrderRec, kind: 'created' | 'updated') => void;
-const orderListeners = new Set<OrderListener>();
-export const onOrderChange = (l: OrderListener) => (
-  orderListeners.add(l),
-  () => void orderListeners.delete(l)
-);
-export const emitOrder = (rec: OrderRec, kind: 'created' | 'updated') =>
-  orderListeners.forEach((l) => l(rec, kind));
-
-type SoldOutListener = (e: C.SoldOutEvent) => void;
-const soldOutListeners = new Set<SoldOutListener>();
-export const onSoldOut = (l: SoldOutListener) => (
-  soldOutListeners.add(l),
-  () => void soldOutListeners.delete(l)
-);
-export const emitSoldOut = (e: C.SoldOutEvent) => soldOutListeners.forEach((l) => l(e));
+type Listener<T> = (v: T) => void;
+function feed<T>() {
+  const ls = new Set<Listener<T>>();
+  return {
+    on: (l: Listener<T>) => (ls.add(l), () => void ls.delete(l)),
+    emit: (v: T) => ls.forEach((l) => l(v)),
+  };
+}
+export const orderFeed = feed<{ rec: OrderRec; kind: 'created' | 'updated' }>();
+export const soldOutFeed = feed<C.SoldOutEvent>();
+export const bookingFeed = feed<C.Booking>();
 
 // Another tab changed the mock DB: reload and re-emit what changed.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
-    const before = new Map(db.orders.map((r) => [r.order.token, r.order.version]));
+    const before = new Map(db.orders.map((r) => [r.order.publicToken, r.order.version]));
     db = load();
     for (const rec of db.orders) {
-      const v = before.get(rec.order.token);
-      if (v === undefined) emitOrder(rec, 'created');
-      else if (v !== rec.order.version) emitOrder(rec, 'updated');
+      const v = before.get(rec.order.publicToken);
+      if (v === undefined) orderFeed.emit({ rec, kind: 'created' });
+      else if (v !== rec.order.version) orderFeed.emit({ rec, kind: 'updated' });
     }
   });
 }
@@ -233,14 +242,12 @@ if (typeof window !== 'undefined') {
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-export const now = () => new Date().toISOString();
-
 export function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Deterministic JSON for hashing (sorted keys). */
+/** Deterministic JSON (sorted keys) for request hashes and cart hashes. */
 export function stableStringify(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
   if (v && typeof v === 'object')
@@ -270,98 +277,156 @@ export function inPolygon({ lat, lng }: C.GeoPoint, ring: C.LngLat[]) {
   return inside;
 }
 
+/** resolve_zone: covers → priority desc → smallest area (§4.1). */
 export function resolveZone(point: C.GeoPoint) {
   if (is('outside_zone')) return fail('OUTSIDE_ZONE', 'That pin is outside our delivery area.');
+  const area = (z: C.DeliveryZone) => {
+    const xs = z.polygon.map((p) => p[0]);
+    const ys = z.polygon.map((p) => p[1]);
+    return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  };
   const zone = db.zones
     .filter((z) => z.isActive && inPolygon(point, z.polygon))
-    .sort((a, b) => b.priority - a.priority)[0];
+    .sort((a, b) => b.priority - a.priority || area(a) - area(b))[0];
   return zone ?? fail('OUTSIDE_ZONE', 'That pin is outside our delivery area.');
 }
 
 export const currentCustomer = () =>
   db.customers.find((c) => c.id === db.session.customerId) ?? null;
 export const requireCustomer = () =>
-  currentCustomer() ?? fail('UNAUTHENTICATED', 'Please verify your phone number.');
+  currentCustomer() ??
+  fail('UNAUTHENTICATED', 'Please verify your phone number.', { reason: 'session' });
+export const customerByPhone = (phone: string) =>
+  db.customers.find((c) => c.phone === phone) ?? null;
+
+export function upsertCustomer(phone: string, name: string | null): CustomerRec {
+  const existing = customerByPhone(phone);
+  if (existing) {
+    if (name && !existing.name) existing.name = name;
+    return existing;
+  }
+  const c: CustomerRec = {
+    id: `cus_${randomToken().slice(0, 12)}`,
+    phone,
+    name,
+    phoneVerifiedAt: null,
+    preferredLang: 'en',
+    whatsappOptIn: false,
+    codAllowed: true,
+    createdAt: now(),
+    isBlocked: false,
+    blockReason: null,
+    failedCodCount: 0,
+    anonymizedAt: null,
+    addresses: [],
+  };
+  db.customers.push(c);
+  return c;
+}
 
 export function requireStaff(roles?: C.StaffRole[]) {
-  const staff = db.session.staff2faPending
+  const staff = db.session.staffPending
     ? null
-    : db.staff.find((s) => s.id === db.session.staffId);
-  if (!staff) return fail('UNAUTHENTICATED', 'Staff login required.');
+    : db.staff.find((s) => s.id === db.session.staffId && s.isActive);
+  if (!staff) return fail('UNAUTHENTICATED', 'Staff login required.', { reason: 'session' });
   if (roles && !roles.includes(staff.role)) return fail('FORBIDDEN', 'Your role cannot do that.');
   return staff;
 }
 
-export const publicStaff = ({ password: _password, ...s }: StaffRec): C.AdminUser => s;
+export const publicStaff = ({ password: _password, ...s }: StaffRec): C.Staff => s;
+
+/** Outbox rows are written with the data change; `dedup_key` is unique (§4.5). */
+export function addOutbox(topic: string, dedupKey: string) {
+  if (db.outbox.some((o) => o.dedupKey === dedupKey)) return;
+  db.outbox.unshift({
+    id: `obx_${randomToken().slice(0, 10)}`,
+    topic,
+    dedupKey,
+    status: 'sent',
+    attempts: 1,
+    nextAttemptAt: null,
+    lastError: null,
+    createdAt: now(),
+  });
+}
 
 /* ------------------------------------------------------------------ */
-/* Store status                                                        */
+/* Store status (is_store_open)                                         */
 /* ------------------------------------------------------------------ */
 
-/** Next opening time from the placeholder hours, in Asia/Karachi (UTC+5, no DST). */
-function nextOpening(from = new Date()): string | null {
-  const PKT = 5 * 3_600_000;
-  for (let d = 0; d < 8; d++) {
-    const local = new Date(from.getTime() + PKT + d * 86_400_000);
-    const h = db.settings.hours.find((x) => x.weekday === local.getUTCDay());
-    if (!h) continue;
-    const [hh, mm] = h.opens.split(':').map(Number);
-    const opens =
-      Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hh, mm) - PKT;
-    if (opens > from.getTime()) return new Date(opens).toISOString();
+const PKT = 5 * 3_600_000; // Asia/Karachi, UTC+5, no DST
+export const localToday = () => new Date(Date.now() + PKT).toISOString().slice(0, 10);
+
+/** Next opening from opening_hours, skipping holidays. */
+function nextOpening(from = Date.now()): string | null {
+  for (let d = 0; d < 9; d++) {
+    const local = new Date(from + PKT + d * 86_400_000);
+    if (db.holidays.some((h) => h.date === local.toISOString().slice(0, 10))) continue;
+    for (const h of db.hours.filter((x) => x.weekday === local.getUTCDay())) {
+      const [hh = 0, mm = 0] = h.opens.split(':').map(Number);
+      const opens =
+        Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hh, mm) - PKT;
+      if (opens > from) return new Date(opens).toISOString();
+    }
   }
   return null;
 }
 
+const storeMin = () => (is('below_min') ? 5000 : db.settings.minOrderValue);
+const codCap = () => (is('cod_not_allowed') ? 300 : db.settings.maxCodValue);
+
 export function storeStatus(): C.StoreStatus {
-  const paused = !db.settings.isAcceptingOrders;
-  // ponytail: happy path is always open so dev works at any hour; store_closed forces closed.
+  // ponytail: the happy path is always open so dev works at any hour; store_closed forces closed.
+  const paused = is('paused') || !db.settings.isAcceptingOrders;
   const closed = is('store_closed');
   const opensAt = closed ? nextOpening() : null;
   const soon = opensAt !== null && new Date(opensAt).getTime() - Date.now() < 60 * 60_000;
   return {
     state: paused ? 'paused' : closed ? (soon ? 'opening_soon' : 'closed') : 'open',
     isAcceptingOrders: !paused && !closed,
-    pauseReason: db.settings.pauseReason,
+    pauseReason: is('paused')
+      ? 'Kitchen is catching up, back in 20 minutes (mock)'
+      : db.settings.pauseReason,
     opensAt,
     closesAt: null,
     allowPreorders: db.settings.allowPreorders,
+    minOrderValue: storeMin(),
+    shopPhone: db.settings.shopPhone,
     checkedAt: now(),
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Pricing (server-side quote)                                         */
+/* Pricing (mirrors create_order, §4.1)                                 */
 /* ------------------------------------------------------------------ */
 
-interface PriceInput {
+export interface PriceInput {
   lines: C.CartLine[];
   fulfilment: C.Fulfilment;
-  addressId: string | null;
   location: C.GeoPoint | null;
   promoCode: string | null;
   scheduledFor: string | null;
   tip: number;
 }
 
-export function priceCart(
-  input: PriceInput,
-  customer: CustomerRec | null,
-): C.Quote & { address: C.Address | null } {
-  // Store open, or a valid pre-order.
-  if (input.scheduledFor) {
-    const at = new Date(input.scheduledFor).getTime();
-    if (
-      !db.settings.allowPreorders ||
-      at <= Date.now() ||
-      at > Date.now() + db.settings.preorderMaxDays * 86_400_000
-    )
-      fail('PREORDER_INVALID', 'Pick a time in the next 7 days while we are open.');
-  } else if (!storeStatus().isAcceptingOrders) {
-    fail('STORE_CLOSED', 'We are closed right now.', { opensAt: storeStatus().opensAt });
-  }
+export type PricedCart = Omit<C.Quote, 'requiresOtp' | 'cod'>;
 
-  // Items, variants, modifiers.
+function checkOpenOrPreorder(scheduledFor: string | null) {
+  if (scheduledFor) {
+    const at = new Date(scheduledFor).getTime();
+    const tooFar = at > Date.now() + db.settings.preorderMaxDays * 86_400_000;
+    if (is('preorder_invalid') || !db.settings.allowPreorders || at <= Date.now() || tooFar)
+      fail('PREORDER_INVALID', 'Pick a time in the next 7 days while we are open.');
+    return;
+  }
+  const s = storeStatus();
+  if (!s.isAcceptingOrders)
+    fail('STORE_CLOSED', s.pauseReason ?? 'We are closed right now.', { opensAt: s.opensAt });
+}
+
+export function priceCart(input: PriceInput, customer: CustomerRec | null): PricedCart {
+  checkOpenOrPreorder(input.scheduledFor);
+
   const lines: C.QuotedLine[] = input.lines.map((line) => {
     const item = db.menu.items.find((i) => i.id === line.itemId && i.isActive);
     if (!item) return fail('VALIDATION_FAILED', 'Unknown item', { itemId: line.itemId });
@@ -385,18 +450,18 @@ export function priceCart(
           itemId: item.id,
         });
     }
-
     const unitPrice = variant.price + modifiers.reduce((s, m) => s + m.price, 0);
     return {
       itemId: item.id,
       variantId: variant.id,
       name: item.name,
+      variantName: variant.name,
       size: variant.size,
       option: variant.option,
       modifiers,
       unitPrice,
       qty: line.qty,
-      lineTotal: unitPrice * line.qty,
+      lineTotal: lineTotal(unitPrice, line.qty),
       note: line.note,
     };
   });
@@ -408,69 +473,76 @@ export function priceCart(
     lines.some((l) => l.itemId === FILLET_FURY_ID)
   ) {
     db.soldOutTriggered = true;
-    const item = db.menu.items.find((i) => i.id === FILLET_FURY_ID)!;
-    item.isSoldOut = true;
-    emitSoldOut({ itemId: item.id, isSoldOut: true, soldOutUntil: null });
-    save();
+    setSoldOut(FILLET_FURY_ID, true);
   }
 
-  // Delivery zone.
-  let zone: C.DeliveryZone | null = null;
-  let address: C.Address | null = null;
-  if (input.fulfilment === 'delivery') {
-    if (input.addressId) {
-      address =
-        customer?.addresses.find((a) => a.id === input.addressId) ??
-        fail('ADDRESS_NOT_FOUND', 'Address not found.');
-      zone = resolveZone(address.location);
-    } else if (input.location) {
-      zone = resolveZone(input.location);
-    }
-  }
-
+  const zone =
+    input.fulfilment === 'delivery' && input.location ? resolveZone(input.location) : null;
   const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0);
-  const minOrder = Math.max(db.settings.minOrderValue, zone?.minOrder ?? 0);
+  const minOrder = effectiveMinOrder(storeMin(), zone?.minOrder ?? null);
   if (subtotal < minOrder)
-    fail('BELOW_MIN_ORDER', `Minimum order is Rs ${minOrder}.`, { minOrder, subtotal });
+    fail('BELOW_MIN_ORDER', `Minimum order is Rs ${minOrder}.`, {
+      minOrder,
+      shortBy: shortBy(subtotal, minOrder),
+    });
 
   const deliveryFee = input.fulfilment === 'pickup' ? 0 : (zone?.fee ?? 0);
   let discount = 0;
   let promo: C.Quote['promo'] = null;
   if (input.promoCode) {
-    const p = db.promos.find((x) => x.code === input.promoCode && x.isActive);
-    if (!p) return fail('PROMO_INVALID', 'That code is not valid.');
+    const p =
+      db.promos.find((x) => x.code === input.promoCode && x.isActive) ??
+      fail('PROMO_INVALID', 'That code is not valid.');
     if (p.validUntil && new Date(p.validUntil).getTime() < Date.now())
       fail('PROMO_EXPIRED', 'That code has expired.');
     if (p.validFrom && new Date(p.validFrom).getTime() > Date.now())
       fail('PROMO_INVALID', 'That code is not active yet.');
     if (p.maxUses !== null && p.usedCount >= p.maxUses)
       fail('PROMO_LIMIT', 'That code has been fully used.');
+    const mine = customer
+      ? db.redemptions.filter((r) => r.promoId === p.id && r.customerId === customer.id).length
+      : 0;
+    if (mine >= p.maxUsesPerCustomer) fail('PROMO_LIMIT', 'You have already used this code.');
     if (subtotal < p.minOrder)
       fail('PROMO_INVALID', `Spend Rs ${p.minOrder} to use this code.`, { minOrder: p.minOrder });
-    if (p.kind === 'percent') discount = Math.floor((subtotal * p.value) / 100);
-    if (p.kind === 'flat') discount = Math.min(p.value, subtotal);
-    if (p.kind === 'free_delivery') discount = deliveryFee;
+    discount = promoDiscount(p.kind, p.value, subtotal, deliveryFee);
     promo = { code: p.code, discount };
   }
 
-  const tax = 0;
-  const total = subtotal + deliveryFee + tax + input.tip - discount;
   return {
+    ...computeTotals({ subtotal, deliveryFee, discount, tax: 0, tip: input.tip }),
     lines,
-    subtotal,
-    deliveryFee,
-    discount,
-    tax,
-    tip: input.tip,
-    total,
     minOrder,
     etaMinutes: 20 + (zone?.etaMinutes ?? 0),
     zone: zone ? { id: zone.id, name: zone.name } : null,
     promo,
     cartHash: hash(stableStringify(input.lines)),
     quotedAt: now(),
-    address,
   };
+}
+
+/** COD rules (§4.1, §7): blocked, over the cap, or a pre-order more than 2 h out. */
+export function codCheck(
+  customer: CustomerRec | null,
+  total: number,
+  scheduledFor: string | null,
+): C.Quote['cod'] {
+  if (customer && (customer.isBlocked || !customer.codAllowed))
+    return { allowed: false, reason: 'blocked' };
+  if (total > codCap()) return { allowed: false, reason: 'over_cap' };
+  if (
+    scheduledFor &&
+    new Date(scheduledFor).getTime() - Date.now() > db.settings.preorderCodMaxHours * 3_600_000
+  )
+    return { allowed: false, reason: 'preorder_too_far' };
+  return { allowed: true, reason: null };
+}
+
+/** OTP on the first COD order from an unverified phone (§7). */
+export function requiresOtp(customer: CustomerRec | null) {
+  const sessionMatches = customer !== null && db.session.customerId === customer.id;
+  if (is('requires_otp')) return !sessionMatches;
+  return !customer?.phoneVerifiedAt && !sessionMatches;
 }
 
 /* ------------------------------------------------------------------ */
@@ -479,21 +551,47 @@ export function priceCart(
 
 export function toCustomerOrder(rec: OrderRec): C.Order {
   const {
-    id: _id,
+    id: _i,
     version: _v,
     customer: _c,
     rider: _r,
-    source: _s,
     acceptedAt: _a,
     readyAt: _rd,
     completedAt: _cm,
+    cashCollectedAt: _cc,
     cancelReason: _cr,
+    releasedAt: _rl,
     events,
     ...rest
   } = rec.order;
   return { ...rest, events: events.map(({ status, at, note }) => ({ status, at, note })) };
 }
 
+/** Staff view; the rider sees the full phone only on their active order (§7). */
+export function toAdminOrder(
+  rec: OrderRec,
+  viewer?: { id: string; role: C.StaffRole },
+): C.AdminOrder {
+  const c = db.customers.find((x) => x.id === rec.customerId);
+  const riderActive =
+    viewer?.role === 'rider' &&
+    rec.assignment?.riderId === viewer.id &&
+    rec.order.status === 'out_for_delivery';
+  const phone = c && riderActive && !c.anonymizedAt ? c.phone : rec.order.customer.phone;
+  return { ...rec.order, customer: { ...rec.order.customer, phone } };
+}
+
+export function setSoldOut(itemId: string, isSoldOut: boolean, soldOutUntil: string | null = null) {
+  const item = db.menu.items.find((i) => i.id === itemId);
+  if (!item) return;
+  item.isSoldOut = isSoldOut;
+  item.soldOutUntil = isSoldOut ? soldOutUntil : null;
+  db.menu.updatedAt = now();
+  save();
+  soldOutFeed.emit({ itemId, isSoldOut, soldOutUntil: item.soldOutUntil });
+}
+
+/** transition_order: idempotent on the current status; bumps version; event; broadcast (§4.2). */
 export function transition(
   rec: OrderRec,
   to: C.OrderStatus,
@@ -502,7 +600,7 @@ export function transition(
   note: string | null = null,
 ) {
   const o = rec.order;
-  if (o.status === to) return; // idempotent
+  if (o.status === to) return;
   const at = now();
   o.status = to;
   o.version += 1;
@@ -512,85 +610,138 @@ export function transition(
   if (to === 'ready') o.readyAt = at;
   if (to === 'delivered' || to === 'picked_up') {
     o.completedAt = at;
-    if (o.paymentMethod === 'cod') o.paymentStatus = 'paid';
+    if (o.paymentMethod === 'cod') {
+      o.paymentStatus = 'paid';
+      o.cashCollectedAt = at;
+    }
   }
   rec.lastChangeAt = Date.now();
   save();
-  emitOrder(rec, 'updated');
+  orderFeed.emit({ rec, kind: 'updated' });
 }
 
-// Auto-progression for mock orders: [next status, ms after the last change].
-const FLOW: Record<C.Fulfilment, Partial<Record<C.OrderStatus, [C.OrderStatus, number]>>> = {
+// Auto-progression through the §4.2 state machine, ~8 s per step.
+const STEP = 8000;
+const FLOW: Record<C.Fulfilment, Partial<Record<C.OrderStatus, C.OrderStatus>>> = {
   delivery: {
-    placed: ['accepted', 6000],
-    accepted: ['preparing', 2000],
-    preparing: ['ready', 6000],
-    ready: ['out_for_delivery', 2000],
-    out_for_delivery: ['delivered', 8000],
+    placed: 'accepted',
+    accepted: 'preparing',
+    preparing: 'ready',
+    ready: 'out_for_delivery',
+    out_for_delivery: 'delivered',
   },
-  pickup: {
-    placed: ['accepted', 6000],
-    accepted: ['preparing', 2000],
-    preparing: ['ready', 8000],
-    ready: ['picked_up', 8000],
-  },
+  pickup: { placed: 'accepted', accepted: 'preparing', preparing: 'ready', ready: 'picked_up' },
 };
+
+function advancePayment(rec: OrderRec) {
+  const p = rec.payment;
+  if (!p) return;
+  const elapsed = Date.now() - p.startedAt;
+  const markPaid = () => {
+    p.status = 'paid';
+    rec.order.paymentStatus = 'paid';
+    rec.autoAdvance = true;
+    transition(rec, 'placed', 'payment', p.provider, 'Payment confirmed via inquiry API');
+  };
+  if (p.status === 'pending') {
+    if (p.outcome === 'success' && elapsed > 4000) markPaid();
+    else if (p.outcome === 'fail' && elapsed > 4000) {
+      p.status = 'failed';
+      rec.order.paymentStatus = 'failed';
+      transition(rec, 'payment_failed', 'payment', p.provider);
+    } else if (Date.now() > p.expiresAt) {
+      p.status = 'failed';
+      rec.order.paymentStatus = 'failed';
+      transition(rec, 'expired', 'system', 'reconciler', 'Payment not confirmed in time');
+    }
+  } else if (p.outcome === 'late_success' && rec.order.status === 'expired' && elapsed > 16_000) {
+    // §4.3 step 8: late success after expiry → back to placed if the items are still available.
+    const available = rec.order.lines.every(
+      (l) => !db.menu.items.find((i) => i.id === l.itemId)?.isSoldOut,
+    );
+    if (available) markPaid();
+  }
+}
 
 /** Advance timers. Called on every request and once a second by the worker bootstrap. */
 export function tick() {
   for (const rec of db.orders) {
-    const p = rec.payment;
-    if (p?.status === 'pending') {
-      const elapsed = Date.now() - p.startedAt;
-      if (p.outcome === 'success' && elapsed > 4000) {
-        p.status = 'paid';
-        rec.order.paymentStatus = 'paid';
-        rec.autoAdvance = true;
-        transition(rec, 'placed', 'payment', p.provider);
-      } else if (p.outcome === 'fail' && elapsed > 4000) {
-        p.status = 'failed';
-        rec.order.paymentStatus = 'failed';
-        transition(rec, 'payment_failed', 'payment', p.provider);
-      } else if (Date.now() > p.expiresAt) {
-        p.status = 'failed';
-        rec.order.paymentStatus = 'failed';
-        transition(rec, 'expired', 'system', 'reconciler');
-      }
+    advancePayment(rec);
+    if (rec.rejectAt && rec.order.status === 'placed' && Date.now() >= rec.rejectAt) {
+      const auto = is('auto_rejected');
+      rec.autoAdvance = false;
+      rec.rejectAt = null;
+      transition(
+        rec,
+        'rejected',
+        auto ? 'system' : 'staff',
+        auto ? 'auto-reject job' : 'Kitchen (mock)',
+        auto
+          ? 'Auto-rejected: not accepted within 8 minutes'
+          : 'Kitchen is too busy right now (mock)',
+      );
+      continue;
     }
-    if (!rec.autoAdvance) continue;
-    // Loop so a reload catches up through several steps at once.
+    if (!rec.autoAdvance || rec.rejectAt) continue;
     for (
-      let step = FLOW[rec.order.fulfilment][rec.order.status];
-      step;
-      step = FLOW[rec.order.fulfilment][rec.order.status]
+      let next = FLOW[rec.order.fulfilment][rec.order.status];
+      next;
+      next = FLOW[rec.order.fulfilment][rec.order.status]
     ) {
-      if (Date.now() - rec.lastChangeAt < step[1]) break;
-      transition(rec, step[0], 'system', 'mock timer');
+      if (Date.now() - rec.lastChangeAt < STEP) break;
+      transition(rec, next, 'system', 'mock timer');
     }
   }
+  for (const b of db.bookings) {
+    if (b.status === 'requested' && b.resolveAt && Date.now() >= b.resolveAt) {
+      if (is('booking_declined'))
+        applyBookingAction(b, { action: 'decline', reason: 'Fully booked that evening (mock)' });
+      else applyBookingAction(b, { action: 'confirm' });
+    }
+  }
+  if (is('live_sold_out') && !db.liveSoldOutDone && scenarioElapsed() > 8000) {
+    db.liveSoldOutDone = true;
+    setSoldOut(FILLET_FURY_ID, true);
+  }
+  if (is('mixed_sources') && Date.now() - db.lastInjectedAt > 12_000) injectMixedOrder();
+}
+
+export interface NewOrderInput {
+  lines: C.CartLine[];
+  fulfilment: C.Fulfilment;
+  paymentMethod: C.PaymentMethod;
+  scheduledFor: string | null;
+  customerNote: string | null;
+  whatsappOptIn: boolean;
+  source: C.OrderSource;
 }
 
 export function newOrder(
-  input: C.PlaceOrderRequest,
-  quote: ReturnType<typeof priceCart>,
+  input: NewOrderInput,
+  quote: PricedCart,
   customer: CustomerRec,
+  address: C.Address | null,
 ): OrderRec {
   const at = now();
   const online = input.paymentMethod !== 'cod';
   const status: C.OrderStatus = online ? 'pending_payment' : 'placed';
-  const readyAt = new Date(Date.now() + 20 * 60_000).toISOString();
+  const prior = db.orders.filter((o) => o.customerId === customer.id).length;
+  const rejectDelay = is('order_rejected') ? 8000 : is('auto_rejected') ? 12_000 : null;
   const rec: OrderRec = {
     customerId: customer.id,
     autoAdvance: !online,
     lastChangeAt: Date.now(),
     cartHash: quote.cartHash,
     payment: null,
-    settled: false,
+    assignment: null,
+    rejectAt: status === 'placed' && rejectDelay ? Date.now() + rejectDelay : null,
+    versionConflictServed: false,
     order: {
       id: `ord_${randomToken().slice(0, 12)}`,
-      token: randomToken(),
+      publicToken: randomToken(),
       number: `BP-${db.nextOrderNumber++}`,
       status,
+      source: input.source,
       fulfilment: input.fulfilment,
       paymentMethod: input.paymentMethod,
       paymentStatus: 'unpaid',
@@ -601,66 +752,217 @@ export function newOrder(
       tax: quote.tax,
       tip: quote.tip,
       total: quote.total,
-      address: quote.address
+      address: address
         ? {
-            label: quote.address.label,
-            line1: quote.address.line1,
-            area: quote.address.area,
-            landmark: quote.address.landmark,
-            location: quote.address.location,
+            label: address.label,
+            line1: address.line1,
+            area: address.area,
+            landmark: address.landmark,
+            location: address.location,
             recipientName: customer.name,
             recipientPhone: customer.phone,
           }
         : null,
       customerNote: input.customerNote,
       scheduledFor: input.scheduledFor,
-      estimatedReadyAt: readyAt,
+      estimatedReadyAt: new Date(Date.now() + 20 * 60_000).toISOString(),
       estimatedDeliveryAt:
         input.fulfilment === 'delivery'
           ? new Date(Date.now() + quote.etaMinutes * 60_000).toISOString()
           : null,
       canCancel: status === 'placed',
-      events: [{ status, at, note: null, actorType: 'customer', actorName: customer.name }],
       createdAt: at,
+      events: [
+        {
+          status,
+          at,
+          note: null,
+          actorType: input.source === 'website' ? 'customer' : 'staff',
+          actorName: customer.name,
+        },
+      ],
       version: 0,
       customer: {
         id: customer.id,
         name: customer.name,
         phone: maskPhone(customer.phone),
-        orderCount: db.orders.filter((o) => o.customerId === customer.id).length + 1,
+        orderCount: prior + 1,
       },
       rider: null,
-      source: 'web',
       acceptedAt: null,
       readyAt: null,
       completedAt: null,
+      cashCollectedAt: null,
       cancelReason: null,
+      releasedAt: null,
     },
   };
   if (quote.promo) {
     const p = db.promos.find((x) => x.code === quote.promo!.code);
-    if (p) p.usedCount += 1;
+    if (p) {
+      p.usedCount += 1;
+      db.redemptions.push({ promoId: p.id, customerId: customer.id, orderId: rec.order.id });
+    }
   }
+  customer.whatsappOptIn ||= input.whatsappOptIn;
   db.orders.unshift(rec);
   db.stats.ordersCreated += 1;
-  customer.whatsappOptIn ||= input.whatsappOptIn;
+  addOutbox('kitchen.new_order', `order:${rec.order.number}:kitchen`);
+  if (customer.whatsappOptIn)
+    addOutbox('whatsapp.order_placed', `order:${rec.order.number}:placed`);
   save();
-  emitOrder(rec, 'created');
+  orderFeed.emit({ rec, kind: 'created' });
   return rec;
 }
 
 export const findOrderByToken = (token: string) =>
-  db.orders.find((r) => r.order.token === token) ?? fail('NOT_FOUND', 'Order not found.');
+  db.orders.find((r) => r.order.publicToken === token) ?? fail('NOT_FOUND', 'Order not found.');
 export const findOrderById = (id: string) =>
   db.orders.find((r) => r.order.id === id) ?? fail('NOT_FOUND', 'Order not found.');
 
+const SOURCE_NAME: Record<C.OrderSource, string> = {
+  website: 'Web',
+  whatsapp: 'WhatsApp',
+  phone: 'Phone',
+  walk_in: 'Walk-in',
+  foodpanda: 'Foodpanda',
+};
+
+/** mixed_sources: a new order from a rotating source every ~12 s. */
+function injectMixedOrder() {
+  db.lastInjectedAt = Date.now();
+  const sources: C.OrderSource[] = ['whatsapp', 'phone', 'website', 'walk_in'];
+  const n = db.orders.length;
+  const source = sources[n % sources.length]!;
+  const pick = db.menu.items.filter((i) => !i.isSoldOut && i.basePrice >= 450);
+  const item = pick[n % pick.length]!;
+  const lines: C.CartLine[] = [
+    { itemId: item.id, variantId: item.variants[0]!.id, modifierIds: [], qty: 2, note: null },
+  ];
+  const customer = upsertCustomer(
+    `+92300${String(1_000_000 + n).slice(-7)}`,
+    `${SOURCE_NAME[source]} customer (mock)`,
+  );
+  try {
+    const priced = priceCart(
+      { lines, fulfilment: 'pickup', location: null, promoCode: null, scheduledFor: null, tip: 0 },
+      customer,
+    );
+    newOrder(
+      {
+        lines,
+        fulfilment: 'pickup',
+        paymentMethod: 'cod',
+        scheduledFor: null,
+        customerNote: null,
+        whatsappOptIn: false,
+        source,
+      },
+      priced,
+      customer,
+      null,
+    );
+  } catch {
+    /* store closed etc.: skip this round */
+  }
+}
+
 /* ------------------------------------------------------------------ */
-/* Idempotency                                                          */
+/* Deals, events, bookings (ADDITION)                                   */
+/* ------------------------------------------------------------------ */
+
+export function eventsWithSpots(events: C.Event[]): C.Event[] {
+  return events.map((e) => {
+    if (e.capacity === null) return { ...e, spotsLeft: null };
+    if (is('event_full')) return { ...e, spotsLeft: 0 };
+    const taken = db.bookings
+      .filter((b) => b.eventId === e.id && (b.status === 'requested' || b.status === 'confirmed'))
+      .reduce((s, b) => s + b.guests, 0);
+    return { ...e, spotsLeft: Math.max(0, e.capacity - taken) };
+  });
+}
+
+export const toBooking = ({ resolveAt: _r, ...b }: BookingRec): C.Booking => b;
+
+const ACTION_STATUS: Record<C.BookingAction['action'], C.BookingStatus> = {
+  confirm: 'confirmed',
+  decline: 'declined',
+  complete: 'completed',
+  no_show: 'no_show',
+  cancel: 'cancelled',
+};
+
+export function applyBookingAction(b: BookingRec, a: C.BookingAction) {
+  const to = ACTION_STATUS[a.action];
+  if (b.status === to) return;
+  if (!C.BOOKING_TRANSITIONS[b.status].includes(to))
+    fail('INVALID_TRANSITION', `Cannot move a ${b.status} booking to ${to}.`);
+  b.status = to;
+  b.resolveAt = null;
+  if (a.action === 'decline') b.declineReason = a.reason;
+  // Customer gets a WhatsApp/SMS confirmation via the outbox.
+  if (to === 'confirmed' || to === 'declined')
+    addOutbox(`whatsapp.booking_${to}`, `booking:${b.publicToken}:${to}`);
+  save();
+  bookingFeed.emit(toBooking(b));
+}
+
+/** Plug point for the deals_demo scenario (handlers swap in the DEMO set). */
+type DealsEventsSource = () => { deals: C.Deal[]; events: C.Event[] } | null;
+let dealsEventsOverride: DealsEventsSource | null = null;
+export const setDealsEventsOverride = (fn: DealsEventsSource) => {
+  dealsEventsOverride = fn;
+};
+
+export function publicDealsEvents(): C.DealsEvents {
+  const t = Date.now();
+  const live = (from: string | null, until: string | null) =>
+    (!from || new Date(from).getTime() <= t) && (!until || new Date(until).getTime() >= t);
+  const src = dealsEventsOverride?.() ?? { deals: db.deals, events: db.events };
+  return {
+    deals: src.deals
+      .filter((d) => d.isActive && live(d.validFrom, d.validUntil))
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+    events: eventsWithSpots(
+      src.events.filter((e) => e.isActive && new Date(e.endsAt).getTime() >= t),
+    ).sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+  };
+}
+
+export function createBooking(input: Omit<C.BookingRequest, 'turnstileToken'>): C.Booking {
+  if (input.date < localToday())
+    fail('VALIDATION_FAILED', 'Pick today or a later date.', { field: 'date' });
+  if (input.type === 'event') {
+    const event = publicDealsEvents().events.find((e) => e.id === input.eventId);
+    if (!event?.bookable) return fail('NOT_FOUND', 'That event is not open for booking.');
+    if (event.spotsLeft !== null && event.spotsLeft < input.guests)
+      fail('EVENT_FULL', 'That event is full.', { spotsLeft: event.spotsLeft });
+  }
+  const auto = is('booking_confirmed') || is('booking_declined');
+  const b: BookingRec = {
+    ...input,
+    publicToken: randomToken(),
+    status: 'requested',
+    declineReason: null,
+    createdAt: now(),
+    resolveAt: auto ? Date.now() + 10_000 : null,
+  };
+  db.bookings.unshift(b);
+  addOutbox('whatsapp.booking_received', `booking:${b.publicToken}:requested`);
+  save();
+  return toBooking(b);
+}
+
+export const findBooking = (token: string) =>
+  db.bookings.find((b) => b.publicToken === token) ?? fail('NOT_FOUND', 'Booking not found.');
+
+/* ------------------------------------------------------------------ */
+/* Idempotency (§4.1 steps 2–8)                                         */
 /* ------------------------------------------------------------------ */
 
 /**
- * Mirrors ARCHITECTURE §4.1: lookup → 409 while processing → 422 on hash mismatch →
- * replay stored response when done → otherwise claim and run.
+ * lookup → 409 while processing → 422 on hash mismatch → replay when done → claim and run.
+ * The request hash excludes `turnstileToken`.
  */
 export async function idempotent(
   key: string | null,
@@ -676,7 +978,7 @@ export async function idempotent(
       fail('IDEMPOTENCY_CONFLICT', 'This request key was already used with a different body.');
     if (existing.state === 'processing') {
       db.stats.inProgress += 1;
-      fail('IN_PROGRESS', 'Still working on it.', undefined, { [C.HEADERS.retryAfter]: '2' });
+      fail('IN_PROGRESS', 'Still working on it.', { retryAfter: 2 }, { 'Retry-After': '2' });
     }
     db.stats.replays += 1;
     save();
@@ -693,6 +995,3 @@ export async function idempotent(
     throw e;
   }
 }
-
-/** Seed info for the store endpoints. */
-export const storeInfo = () => storeInfoFixture;

@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "check:mocks": "tsx --experimental-eventsource mocks/check.ts"
+    "test": "tsx --experimental-eventsource --test \"lib/**/*.test.ts\" \"mocks/**/*.test.ts\""
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.2",

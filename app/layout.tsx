@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { latinFontVars, urduFontVars } from '@/lib/fonts';
+import { colors } from '@/tailwind.config';
 import { isRtl } from '@/lib/i18n/request';
 import { Providers } from './providers';
 import './globals.css';
@@ -14,8 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  // eslint-disable-next-line no-restricted-syntax -- <meta theme-color> cannot read CSS vars; this is --color-blue.
-  themeColor: '#1C9AD6',
+  themeColor: colors.blue, // <meta> can't read CSS vars
   width: 'device-width',
   initialScale: 1,
 };

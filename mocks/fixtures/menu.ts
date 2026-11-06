@@ -1,7 +1,7 @@
 /**
  * Menu fixture, in the order of the printed menu boards. Prices: whole PKR.
- * Do NOT invent prices, add-ons, drinks or descriptions. Descriptions stay null until the
- * client provides them. Anything marked TODO_CONFIRM is listed in docs/OPEN_QUESTIONS.md.
+ * Do NOT invent prices, add-ons, drinks or descriptions. Descriptions and Urdu names stay null
+ * until the client provides them. Everything marked TODO_CONFIRM is in docs/OPEN_QUESTIONS.md.
  */
 import type {
   Category,
@@ -22,16 +22,29 @@ const UPDATED_AT = '2026-11-06T00:00:00+05:00';
 
 type V = Omit<Variant, 'id' | 'isDefault' | 'isAvailable'> & { key: string };
 
-const single = (price: number): V[] => [{ key: 'std', size: null, option: null, price }];
+const OPTION_LABEL: Record<VariantOption, string> = {
+  regular: 'Regular',
+  large: 'Large',
+  single: 'Single',
+  double: 'Double',
+  optionA: 'Option A',
+  optionB: 'Option B',
+  classic: 'Classic',
+  cheese: 'Cheese',
+};
 
-/** TODO_CONFIRM: two-price items. Unconfirmed which variant each price is. */
+const single = (price: number): V[] => [
+  { key: 'std', name: 'Standard', size: null, option: null, price },
+];
+
+/** TODO_CONFIRM: two-price items. Which variant each price is has not been confirmed. */
 const two = (a: number, b: number, [oa, ob]: [VariantOption, VariantOption]): V[] => [
-  { key: oa, size: null, option: oa, price: a },
-  { key: ob, size: null, option: ob, price: b },
+  { key: oa, name: OPTION_LABEL[oa], size: null, option: oa, price: a },
+  { key: ob, name: OPTION_LABEL[ob], size: null, option: ob, price: b },
 ];
 
 type SizePrice = number | [number, number] | null;
-/** Pizza sizes; `[a, b]` = slash price (TODO_CONFIRM: optionA/optionB), null = not available. */
+/** Pizza sizes. `[a, b]` = slash price → two variants (TODO_CONFIRM Option A/B); null = not offered. */
 const pizza = (S: SizePrice, M: SizePrice, L: SizePrice, XL: SizePrice): V[] =>
   (
     [
@@ -42,16 +55,16 @@ const pizza = (S: SizePrice, M: SizePrice, L: SizePrice, XL: SizePrice): V[] =>
     ] as [VariantSize, SizePrice][]
   ).flatMap(([size, p]): V[] => {
     if (p === null) return [];
-    if (typeof p === 'number') return [{ key: size, size, option: null, price: p }];
+    if (typeof p === 'number') return [{ key: size, name: size, size, option: null, price: p }];
     return [
-      { key: `${size}-a`, size, option: 'optionA', price: p[0] },
-      { key: `${size}-b`, size, option: 'optionB', price: p[1] },
+      { key: `${size}-a`, name: `${size} · Option A`, size, option: 'optionA', price: p[0] },
+      { key: `${size}-b`, name: `${size} · Option B`, size, option: 'optionB', price: p[1] },
     ];
   });
 
 /* ---------- Modifier groups ---------- */
 
-const DIP_PRICES: [slug: string, name: string, price: number][] = [
+export const DIPS: [slug: string, name: string, price: number][] = [
   ['ranch', 'Ranch', 95],
   ['chipotle', 'Chipotle', 95],
   ['garlic-mayo', 'Garlic Mayo', 95],
@@ -60,7 +73,7 @@ const DIP_PRICES: [slug: string, name: string, price: number][] = [
   ['hot-honey-ranch', 'Hot Honey Ranch', 145],
 ];
 
-const dipModifiers: Modifier[] = DIP_PRICES.map(([slug, name, price]) => ({
+const dipModifiers: Modifier[] = DIPS.map(([slug, name, price]) => ({
   id: `mod_dip_${slug}`,
   name: { en: name, ur: null },
   price,
@@ -68,58 +81,52 @@ const dipModifiers: Modifier[] = DIP_PRICES.map(([slug, name, price]) => ({
 }));
 
 export const GROUP_DIPS = 'grp_dips';
-export const GROUP_HONEY_HEAT = 'grp_honey_heat';
+export const GROUP_STYLE = 'grp_honey_style';
 
 const modifierGroups: ModifierGroup[] = [
-  // TODO_CONFIRM: max dips per item (6 = one of each).
   {
     id: GROUP_DIPS,
     name: { en: 'Add a dip', ur: null },
     minSelect: 0,
-    maxSelect: 6,
+    maxSelect: 3,
     modifiers: dipModifiers,
   },
   {
-    id: GROUP_HONEY_HEAT,
-    name: { en: 'Heat', ur: null },
+    id: GROUP_STYLE,
+    name: { en: 'Style', ur: null },
     minSelect: 1,
     maxSelect: 1,
     modifiers: [
-      { id: 'mod_heat_regular', name: { en: 'Regular', ur: null }, price: 0, isAvailable: true },
-      { id: 'mod_heat_spicy', name: { en: 'Spicy', ur: null }, price: 0, isAvailable: true },
+      { id: 'mod_style_regular', name: { en: 'Regular', ur: null }, price: 0, isAvailable: true },
+      { id: 'mod_style_spicy', name: { en: 'Spicy', ur: null }, price: 0, isAvailable: true },
     ],
   },
 ];
 
-/** TODO: extra cheese add-on. Data model is ModifierGroup; ships empty until the client prices it. */
+/** TODO: extra cheese add-on. Data model = ModifierGroup; ships empty until the client prices it. */
 export const extraCheeseModifiers: Modifier[] = [];
 
-/** TODO: meals and combos (FEATURE_COMBOS=false). Ships empty. */
+/** Combos / meals: model in place, FEATURE_COMBOS=false, fixture empty. */
 const combos: Combo[] = [];
 
 /* ---------- Categories (printed menu order) ---------- */
 
-type CatDef = {
-  slug: string;
-  name: string;
-  images: string[];
-  subsections?: [string, string][];
-  dips: boolean;
-};
+type CatDef = { slug: string; name: string; images: string[]; parent?: string; dips: boolean };
 
 const CATS: CatDef[] = [
+  { slug: 'fries', name: 'Fries', images: [IMG('fries-bucket'), IMG('fries-long')], dips: true },
   {
-    slug: 'fries',
-    name: 'Fries',
-    images: [IMG('fries-bucket'), IMG('fries-long')],
-    subsections: [['loaded-fries', 'Loaded Fries']],
+    slug: 'loaded-fries',
+    name: 'Loaded Fries',
+    images: [IMG('fries-bucket')],
+    parent: 'fries',
     dips: true,
   },
   { slug: 'sandwiches', name: 'Sandwiches', images: [IMG('sandwich')], dips: true },
   { slug: 'burgers', name: 'Burgers', images: [IMG('burger')], dips: true },
   { slug: 'wings', name: 'Wings', images: [IMG('wings')], dips: true },
   { slug: 'wraps', name: 'Wraps', images: [IMG('wrap')], dips: true },
-  { slug: 'pastas', name: 'Pastas', images: [IMG('mac')], dips: false },
+  { slug: 'pastas', name: 'Pastas', images: [IMG('mac')], dips: true },
   { slug: 'pizzas', name: 'Pizzas', images: [IMG('pizza-small'), IMG('pizza-big')], dips: true },
   { slug: 'dips', name: 'Dips', images: [], dips: false },
   { slug: 'sides', name: 'Sides', images: [], dips: true },
@@ -130,12 +137,9 @@ const categories: Category[] = CATS.map((c, i) => ({
   slug: c.slug,
   name: { en: c.name, ur: null },
   sortOrder: i,
-  images: c.images,
-  subsections: (c.subsections ?? []).map(([slug, name]) => ({
-    slug,
-    name: { en: name, ur: null },
-  })),
   isActive: true,
+  parentId: c.parent ? `cat_${c.parent}` : null,
+  imagePaths: c.images,
 }));
 
 /* ---------- Items ---------- */
@@ -143,11 +147,10 @@ const categories: Category[] = CATS.map((c, i) => ({
 type ItemDef = {
   name: string;
   variants: V[];
-  subsection?: string;
   image?: string;
-  /** Extra groups beyond the category's dip group. */
+  /** Groups beyond the category's dip group. */
   groups?: string[];
-  /** Override slug when the name repeats across categories (e.g. BP Homemade). */
+  /** Slug override where a name repeats across categories. */
   slug?: string;
 };
 
@@ -161,11 +164,13 @@ const ITEMS: Record<string, ItemDef[]> = {
     { name: 'Arctic Heat Fries', variants: two(300, 500, RL) },
     { name: 'Long Fries', variants: single(450), image: IMG('fries-long') },
     { name: 'BP Homemade', slug: 'bp-homemade-fries', variants: single(495) },
-    { name: 'Cheese Meltdown', variants: single(545), subsection: 'loaded-fries' },
-    { name: 'Pizza Party', variants: single(650), subsection: 'loaded-fries' },
-    { name: 'Crunch Attack', variants: single(650), subsection: 'loaded-fries' },
-    { name: 'Fire on Fries', variants: single(650), subsection: 'loaded-fries' },
-    { name: 'Philly Cheesesteak Fries', variants: single(850), subsection: 'loaded-fries' },
+  ],
+  'loaded-fries': [
+    { name: 'Cheese Meltdown', variants: single(545) },
+    { name: 'Pizza Party', variants: single(650) },
+    { name: 'Crunch Attack', variants: single(650) },
+    { name: 'Fire on Fries', variants: single(650) },
+    { name: 'Philly Cheesesteak Fries', variants: single(850) },
   ],
   sandwiches: [
     { name: 'Barraf Royal Club', variants: single(695) },
@@ -188,7 +193,7 @@ const ITEMS: Record<string, ItemDef[]> = {
   wings: [
     { name: 'Hot Wings', variants: single(395) },
     { name: 'Buffalo Wings', variants: single(445) },
-    { name: 'Honey Glazed Wings', variants: single(550), groups: [GROUP_HONEY_HEAT] },
+    { name: 'Honey Glazed Wings', variants: single(550), groups: [GROUP_STYLE] },
     { name: 'Oven-Baked Wings', variants: single(395) },
     { name: 'BBQ Wings', variants: single(445) },
   ],
@@ -214,11 +219,7 @@ const ITEMS: Record<string, ItemDef[]> = {
     { name: 'Deep Cheese Core', variants: pizza(null, null, 2250, null) },
     { name: 'All Cheese', variants: pizza(500, 900, 1600, 2000) },
   ],
-  dips: DIP_PRICES.map(([slug, name, price]) => ({
-    name,
-    slug: `dip-${slug}`,
-    variants: single(price),
-  })),
+  dips: DIPS.map(([slug, name, price]) => ({ name, slug: `dip-${slug}`, variants: single(price) })),
   sides: [
     { name: 'Tenders', variants: single(695) },
     { name: 'Garlic Bread', variants: two(450, 550, ['classic', 'cheese']) }, // TODO_CONFIRM: "C/P"
@@ -239,12 +240,17 @@ const items: Item[] = CATS.flatMap((cat) =>
     const id = `itm_${slug}`;
     return {
       id,
-      slug,
       categoryId: `cat_${cat.slug}`,
-      subsection: def.subsection ?? null,
+      slug,
       name: { en: def.name, ur: null },
       description: null,
-      image: def.image ?? null,
+      basePrice: def.variants[0]!.price,
+      imagePath: def.image ?? null,
+      isActive: true,
+      isSoldOut: false,
+      soldOutUntil: null,
+      prepMinutes: null,
+      sortOrder: i,
       variants: def.variants.map(({ key, ...v }, vi) => ({
         ...v,
         id: `${id}__${key}`,
@@ -252,11 +258,6 @@ const items: Item[] = CATS.flatMap((cat) =>
         isAvailable: true,
       })),
       modifierGroupIds: [...(cat.dips ? [GROUP_DIPS] : []), ...(def.groups ?? [])],
-      isActive: true,
-      isSoldOut: false,
-      soldOutUntil: null,
-      prepMinutes: null,
-      sortOrder: i,
     };
   }),
 );

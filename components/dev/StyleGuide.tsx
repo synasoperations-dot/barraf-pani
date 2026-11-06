@@ -10,7 +10,12 @@ import { LanguageToggle } from '@/components/site/LanguageToggle';
 import { Badge } from '@/components/ui/Badge';
 import { Button, buttonClasses, type ButtonSize, type ButtonVariant } from '@/components/ui/Button';
 import { Drawer, Sheet } from '@/components/ui/Dialog';
+import { Countdown } from '@/components/ui/Countdown';
 import { Checkbox, Input, RadioCards, TextArea } from '@/components/ui/form';
+import { MapPinPicker } from '@/components/ui/MapPinPicker';
+import { OtpInput } from '@/components/ui/OtpInput';
+import { PhoneInput } from '@/components/ui/PhoneInput';
+import { SourceTag, StatusTag } from '@/components/ui/StatusTag';
 import { Logo, Wordmark } from '@/components/ui/Logo';
 import {
   Blob,
@@ -30,6 +35,7 @@ import { StickerHeading } from '@/components/ui/StickerHeading';
 import { Stepper } from '@/components/ui/Stepper';
 import { Card, MenuBoard, Panel } from '@/components/ui/surfaces';
 import { toast } from '@/components/ui/Toast';
+import { OrderSource, OrderStatus, type GeoPoint } from '@/lib/contracts';
 import { bump, flyToCart, pop, stagger, staggerItem, stamp, CART_BUMP_EVENT } from '@/lib/motion';
 
 /* ---------- Layout helpers ---------- */
@@ -153,6 +159,10 @@ export function StyleGuide() {
   const [total, setTotal] = useState(1895);
   const [pay, setPay] = useState<'cod' | 'jazzcash' | 'easypaisa'>('cod');
   const [optIn, setOptIn] = useState(false);
+  const [phone, setPhone] = useState<string | null>(null);
+  const [otp, setOtp] = useState('');
+  const [pin, setPin] = useState<GeoPoint | null>(null);
+  const [deadline] = useState(() => new Date(Date.now() + 8 * 60_000).toISOString());
   const flyTarget = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -171,6 +181,7 @@ export function StyleGuide() {
     'surfaces',
     'overlays',
     'forms',
+    'staff',
     'states',
     'motion',
   ];
@@ -372,6 +383,11 @@ export function StyleGuide() {
               <StickerHeading size="md" align="start" tilt={4} bolts={false}>
                 No bolts
               </StickerHeading>
+              <div dir="rtl" lang="ur" className="md:col-span-2">
+                <StickerHeading size="md" tilt={2}>
+                  ونگز (RTL: bolts mirror)
+                </StickerHeading>
+              </div>
             </div>
 
             <Label>
@@ -736,6 +752,55 @@ export function StyleGuide() {
                 <Checkbox label="Disabled checkbox" disabled />
               </div>
             </div>
+            <div className="mt-10 grid gap-8 md:grid-cols-2">
+              <div className="space-y-6">
+                <div>
+                  <PhoneInput value={phone} onChange={setPhone} />
+                  <p className="mt-2 font-mono text-xs text-muted">API value: {phone ?? 'null'}</p>
+                </div>
+                <OtpInput
+                  value={otp}
+                  onChange={setOtp}
+                  onComplete={(c) => toast(`Code ${c} entered`)}
+                />
+                <OtpInput
+                  value="12"
+                  onChange={() => {}}
+                  error="That code isn't right. Check it and try again."
+                />
+              </div>
+              <MapPinPicker
+                value={pin}
+                onChange={setPin}
+                message="Inner Jhang · Rs 100 delivery · ~35 min (mock)"
+              />
+            </div>
+          </Section>
+
+          {/* Staff tags */}
+          <Section
+            id="staff"
+            title="Status, source, countdown"
+            note="One tag per order_status: icon + label + lightness, never colour alone. Source labels show everywhere staff see orders."
+          >
+            <Label>StatusTag (all 12 order_status values)</Label>
+            <div className="mb-8 flex flex-wrap gap-3">
+              {OrderStatus.options.map((s) => (
+                <StatusTag key={s} status={s} />
+              ))}
+            </div>
+            <Label>SourceTag</Label>
+            <div className="mb-8 flex flex-wrap gap-3">
+              {OrderSource.options.map((s) => (
+                <SourceTag key={s} source={s} />
+              ))}
+            </div>
+            <Label>Countdown (8-minute accept window)</Label>
+            <Countdown
+              to={deadline}
+              className="text-5xl"
+              onExpire={() => toast('Auto-rejected (demo)')}
+            />
           </Section>
 
           {/* States */}

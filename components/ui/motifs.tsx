@@ -32,15 +32,14 @@ export function Bolt({ size = 28, className, ...rest }: BoltProps) {
 
 /** A big and a small bolt, angled outward. Place one on each side of a heading. */
 export function BoltPair({ side, scale = 1 }: { side: 'start' | 'end'; scale?: number }) {
-  const out = side === 'start' ? -1 : 1;
+  // Drawn for the start side (left in LTR); mirrored for the end side and again in RTL.
   return (
     <span
       aria-hidden="true"
       className={clsx(
         'inline-flex items-end gap-0.5',
-        side === 'start' ? 'flex-row' : 'flex-row-reverse',
+        side === 'start' ? 'rtl:-scale-x-100' : '-scale-x-100 rtl:scale-x-100',
       )}
-      style={{ transform: `scaleX(${out === -1 ? 1 : -1})` }}
     >
       <Bolt size={18 * scale} style={{ transform: 'rotate(-28deg) translateY(-6px)' }} />
       <Bolt size={30 * scale} style={{ transform: 'rotate(-12deg)' }} />

@@ -7,7 +7,13 @@
  */
 import type { z } from 'zod';
 import { api, streamUrls } from '@/lib/api';
-import { KitchenEvent, OrderRealtimeEvent, SoldOutEvent, type AdminOrder } from '@/lib/contracts';
+import {
+  Booking,
+  KitchenEvent,
+  OrderRealtimeEvent,
+  SoldOutEvent,
+  type AdminOrder,
+} from '@/lib/contracts';
 
 export type Unsubscribe = () => void;
 
@@ -74,7 +80,7 @@ export function subscribeToOrder(
       poll: async () => {
         const o = await api.trackOrder(token);
         const event: OrderRealtimeEvent = {
-          token,
+          publicToken: token,
           status: o.status,
           paymentStatus: o.paymentStatus,
           estimatedReadyAt: o.estimatedReadyAt,
@@ -85,6 +91,24 @@ export function subscribeToOrder(
         if (key === last) return [];
         last = key;
         return [event];
+      },
+    },
+    onEvent,
+  );
+}
+
+/** Booking status page: pushes the booking whenever staff confirm / decline it. */
+export function subscribeToBooking(token: string, onEvent: (b: Booking) => void): Unsubscribe {
+  let last = '';
+  return subscribe(
+    {
+      url: streamUrls.booking(token),
+      schema: Booking,
+      poll: async () => {
+        const b = await api.booking(token);
+        if (b.status === last) return [];
+        last = b.status;
+        return [b];
       },
     },
     onEvent,

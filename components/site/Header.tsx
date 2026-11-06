@@ -16,7 +16,7 @@ import { LanguageToggle } from './LanguageToggle';
 
 export const NAV = [
   { href: '/menu', key: 'menu' },
-  { href: '/deals', key: 'deals' },
+  { href: '/deals-events', key: 'deals' },
   { href: '/about', key: 'about' },
   { href: '/visit', key: 'visit' },
 ] as const;

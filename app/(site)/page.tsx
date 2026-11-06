@@ -24,7 +24,7 @@ export default async function HomePage() {
             <Link href="/menu" className={buttonClasses({ size: 'lg' })}>
               {t('nav.orderNow')}
             </Link>
-            {process.env.NEXT_PUBLIC_USE_MOCKS === 'true' && (
+            {process.env.NODE_ENV !== 'production' && (
               <Link href="/dev/ui" className={buttonClasses({ size: 'lg', variant: 'ghost' })}>
                 Style guide
               </Link>

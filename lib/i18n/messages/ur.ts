@@ -20,7 +20,7 @@ const ur: Messages = {
   },
   nav: {
     menu: 'مینو', // TODO translate
-    deals: 'ڈیلز', // TODO translate
+    deals: 'ڈیلز اور ایونٹس', // TODO translate
     about: 'ہمارے بارے میں', // TODO translate
     visit: 'تشریف لائیں', // TODO translate
     orderNow: 'ابھی آرڈر کریں', // TODO translate
@@ -124,6 +124,52 @@ const ur: Messages = {
     sub: 'فرائز، برگر، ونگز، ریپس اور پیزا۔ پیراڈائز سٹی، جھنگ۔', // TODO translate
     comingSoon: 'پورا مینو جلد یہاں ہوگا۔', // TODO translate
   },
+  status: {
+    pending_payment: 'ادائیگی کا انتظار', // TODO translate
+    placed: 'نیا', // TODO translate
+    accepted: 'قبول', // TODO translate
+    preparing: 'تیار ہو رہا ہے', // TODO translate
+    ready: 'تیار', // TODO translate
+    out_for_delivery: 'راستے میں', // TODO translate
+    delivered: 'پہنچ گیا', // TODO translate
+    picked_up: 'لے لیا گیا', // TODO translate
+    cancelled: 'منسوخ', // TODO translate
+    rejected: 'مسترد', // TODO translate
+    payment_failed: 'ادائیگی ناکام', // TODO translate
+    expired: 'میعاد ختم', // TODO translate
+  },
+  source: {
+    website: 'ویب سائٹ', // TODO translate
+    whatsapp: 'واٹس ایپ', // TODO translate
+    phone: 'فون', // TODO translate
+    walk_in: 'واک اِن', // TODO translate
+    foodpanda: 'فوڈ پانڈا', // TODO translate
+  },
+  phone: {
+    label: 'فون نمبر', // TODO translate
+    placeholder: '03XX XXXXXXX',
+    hint: 'ہم آپ کو آرڈر کی اپڈیٹس بھیجیں گے۔ صرف پاکستانی موبائل۔', // TODO translate
+    invalid: 'یہ پاکستانی موبائل نمبر نہیں لگتا۔ 03XX XXXXXXX لکھیں۔', // TODO translate
+  },
+  otp: {
+    label: '6 ہندسوں کا کوڈ لکھیں', // TODO translate
+    digit: '6 میں سے ہندسہ {n}', // TODO translate
+  },
+  countdown: {
+    left: '{time} باقی', // TODO translate
+    expired: 'وقت ختم', // TODO translate
+  },
+  map: {
+    title: 'اپنی جگہ پن کریں', // TODO translate
+    hint: 'اپنے دروازے پر پن لگائیں تاکہ رائیڈر پہلی بار میں پہنچے۔', // TODO translate
+    useLocation: 'میری لوکیشن استعمال کریں', // TODO translate
+    locating: 'آپ کو ڈھونڈ رہے ہیں…', // TODO translate
+    denied: 'لوکیشن نہیں ملی۔ خود لکھیں۔', // TODO translate
+    lat: 'عرض بلد', // TODO translate
+    lng: 'طول بلد', // TODO translate
+    picked: '{lat}, {lng} پر پن', // TODO translate
+    placeholder: 'نقشہ جلد آ رہا ہے', // TODO translate
+  },
   errors: {
     STORE_CLOSED: 'ہم ابھی بند ہیں۔ بعد کے لیے شیڈول کریں؟', // TODO translate
     ITEM_SOLD_OUT: 'آپ کی کارٹ میں کچھ ابھی ختم ہو گیا۔ ہم نے نشان لگا دیا ہے۔', // TODO translate
@@ -150,6 +196,7 @@ const ur: Messages = {
     DUPLICATE_ORDER_SUSPECTED: 'آپ نے ابھی یہی آرڈر کیا تھا۔ دوبارہ کریں؟', // TODO translate
     VERSION_CONFLICT: 'کسی اور نے ابھی اسے بدلا ہے۔ ریفریش ہو گیا۔', // TODO translate
     INVALID_TRANSITION: 'یہ قدم ابھی ممکن نہیں۔', // TODO translate
+    EVENT_FULL: 'یہ ایونٹ بھر چکا ہے۔ کوئی اور تاریخ یا ٹیبل بکنگ آزمائیں۔', // TODO translate
     INTERNAL_ERROR: 'ہماری طرف کچھ خراب ہو گیا۔ دوبارہ کوشش کریں۔', // TODO translate
     NETWORK_ERROR: 'ہم تک رسائی نہیں ہو سکی۔ کنکشن چیک کر کے دوبارہ کوشش کریں۔', // TODO translate
   },

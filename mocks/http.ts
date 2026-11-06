@@ -5,7 +5,7 @@ import { fail, MockError, tick } from './db';
 import { networkConditions } from './scenario';
 
 type Info = Parameters<HttpResponseResolver>[0];
-type Method = 'get' | 'post' | 'patch' | 'delete';
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /** Every mock route: network scenario → advance timers → resolver → contract-shaped errors. */
 export const route = (
