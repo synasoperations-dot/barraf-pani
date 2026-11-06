@@ -64,7 +64,7 @@ Helper scripts in `scripts/`. Run them against a production server started with 
 
 ## Mock scenarios
 
-Add `?scenario=<name>` to any URL, or use the floating scenario panel in dev. The scenario sticks for the browser tab (sessionStorage). Full list with descriptions: [`mocks/scenario.ts`](mocks/scenario.ts).
+Add `?scenario=<name>` to any URL. The scenario sticks for the browser tab (sessionStorage). Full list with descriptions: [`mocks/scenario.ts`](mocks/scenario.ts).
 
 | Area                    | Scenarios                                                                                                                                              |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |

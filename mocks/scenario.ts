@@ -1,6 +1,6 @@
 import { delay, HttpResponse } from 'msw';
 
-/** `?scenario=<name>` or the floating dev panel. Descriptions show in the panel. */
+/** Pick with `?scenario=<name>` (kept for the session). */
 export const SCENARIOS = {
   happy: 'Everything works',
   store_closed: 'Store closed (outside hours)',

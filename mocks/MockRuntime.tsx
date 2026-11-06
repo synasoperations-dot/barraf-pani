@@ -1,21 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import ScenarioPanel from './ScenarioPanel';
+import { useEffect } from 'react';
 
-/** Client-only (loaded with ssr:false): starts the service worker, then shows the dev panel. */
+/** Client-only (loaded with ssr:false): starts the service worker. Switch scenarios with ?scenario=. */
 export default function MockRuntime({ onReady }: { onReady: () => void }) {
-  const [ready, setReady] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
     import('./browser')
       .then(({ startMocks }) => startMocks())
       .catch((e: unknown) => console.error('[msw] failed to start', e))
       .finally(() => {
-        if (cancelled) return;
-        setReady(true);
-        onReady();
+        if (!cancelled) onReady();
       });
     return () => {
       cancelled = true;
@@ -24,5 +19,5 @@ export default function MockRuntime({ onReady }: { onReady: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return ready ? <ScenarioPanel /> : null;
+  return null;
 }

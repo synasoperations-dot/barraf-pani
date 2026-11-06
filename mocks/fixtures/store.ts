@@ -30,11 +30,11 @@ export const storeSettingsFixture: StoreSettings = {
   maintenanceMode: false,
 };
 
-// TBC: opening hours. Mon–Thu 12:00–23:30; Fri–Sun 12:00–02:00 (past midnight).
+// Opening hours: every day 14:00–02:00 (past midnight).
 export const hoursFixture: OpeningHours[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
   weekday,
-  opens: '12:00',
-  closes: weekday === 0 || weekday >= 5 ? '02:00' : '23:30',
+  opens: '14:00',
+  closes: '02:00',
 }));
 
 // TBC: one placeholder holiday.
